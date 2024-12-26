@@ -1,8 +1,37 @@
+import os
+import logging
+from logging.handlers import TimedRotatingFileHandler
 import streamlit as st
-import httpx
 import asyncio
-import pandas as pd
 import time
+
+# Папка для логов
+LOG_FOLDER = "logs"
+os.makedirs(LOG_FOLDER, exist_ok=True)
+
+# Настройка логгера
+logger = logging.getLogger("ml_app")
+logger.setLevel(logging.INFO)
+handler = TimedRotatingFileHandler(
+    filename=os.path.join(LOG_FOLDER, "ml_app.log"),
+    when="midnight",
+    interval=1,
+    backupCount=7,
+    encoding="utf-8",
+)
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+
+async def train_model(file, model, model_id):
+    logger.info(f"Начало обучения модели {model_id} с параметрами: {model}")
+    # Эмуляция долгой задачи
+    for i in range(1, 6):
+        await asyncio.sleep(1)  # Обновляемся каждую секунду
+        logger.info(f"Процесс обучения модели {model_id}: {i * 20}% завершено")
+    logger.info(f"Обучение модели {model_id} завершено успешно!")
+    return {"message": f"Обучение модели {model_id} завершено!", "accuracy": 98.7}
 
 
 st.markdown(
@@ -35,66 +64,57 @@ st.markdown(
 
 BASE_URL = "http://127.0.0.1:8000"
 
-async def train_model(file, model, model_id):
-    """Отправка данных для обучения модели."""
-    time.sleep(2)
-    print(model)
-    return {"message": "Обучение прошло успешно!", "accuracy": 98.7}
-
-async def describe_data(file):
-    pass
-
 # Заголовок
 st.title("✨ Slaaaay ML App 💅")
 st.subheader("Сделай их жизнь ярче с предсказаниями 🤩")
 
 st.sidebar.title("🎨 Навигация")
 st.sidebar.write("Выбери раздел, bae 🌈")
-page = st.sidebar.radio("Разделы:", ["Обучение", "Предсказание"])
+page = st.sidebar.radio(" ", ["Обучение", "Предсказание"])
 
 if page == "Обучение":
     st.header("👑 Обучение ML-модели")
     st.write("Загрузи свой датасетик, милашка 😘")
-    
-    file = st.file_uploader("Выбери файл", type=["zip"])
-    st.checkbox("Показать описательные статистики", disabled=(file is None))
-    # if file is not None and st.checkbox("Показать описательные статистики"):
-    #     data = describe_data(file)
-    #     st.write(data.describe())
 
-    st.write("Выбери метод обучения, my sun 🌈 ")
-    method = st.radio("", 
-                      ["SVC🕶", "LogisticRegression🌸", "RandomForestClassifier👛"])
+    # Загрузка файла
+    file = st.file_uploader("Выбери файл", type=["zip"])
+
+    # Выбор метода обучения
+    method = st.radio(
+        "Выбери метод:",
+        ["SVC🕶", "LogisticRegression🌸", "RandomForestClassifier👛"],
+    )
+
     if method == "SVC🕶":
         st.info("SVC (Support Vector Classifier) - шик для разделения! 👠🥑")
-        st.write("Напиши свои гиперпараметры 🌹")
         C = st.number_input("C", value=1.0)
         kernel = st.selectbox("Kernel", ["linear", "rbf"], index=1)
-        сlass_weight = st.selectbox("Class weight", ["balanced", None])
-        parameters = f"C={C}, kernel='{kernel}', class_weight='{сlass_weight}'"
+        parameters = f"C={C}, kernel='{kernel}'"
     elif method == "LogisticRegression🌸":
         st.info("Logistic Regression - твой гламурный анализ 📈💋")
-        st.write("Напиши свои гиперпараметры 🌹")
         C = st.number_input("C", value=1.0)
-        max_iter = st.number_input("Max iter", value=100)
+        max_iter = st.number_input("Max iter", value=500)
         parameters = f"C={C}, max_iter={max_iter}"
     elif method == "RandomForestClassifier👛":
         st.info("RandomForestClassifier👛 - разберётся во всём, как истинная королева 🌳✨")
-        st.write("Напиши свои гиперпараметры 🌹")
         n_estimators = st.number_input("n_estimators", value=100)
         parameters = f"n_estimators={n_estimators}"
-    st.write("Напиши своё имя и я назову модель в честь тебя 😘")
-    model_id = st.text_input("ID модели", value = f"{method[:-1]}")
-    if st.button("💃 Начать обучение модели", disabled=(file is None) or (model_id == "")):
-        with st.spinner("✨ Обучение модели..."):
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                results = loop.run_until_complete(train_model(file, f"{method[:-1]}({parameters})", model_id))
-                st.success("✅ Обучение завершено!")
-                st.json(results)
-            except Exception as e:
-                st.error(f"⚠️ Ошибка: {str(e)}")
+
+    model_id = st.text_input("ID модели", value=f"{method[:-1]}")
+
+    if st.button("💃 Начать обучение модели", disabled=(file is None or not model_id)):
+        container = st.empty()
+        with container.container():
+            st.spinner("✨ Обучение модели...")
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            results = loop.run_until_complete(train_model(file, f"{method[:-1]}({parameters})", model_id))
+            container.success("✅ Обучение завершено!")
+            st.json(results)
+        except Exception as e:
+            logger.error(f"Ошибка: {str(e)}")
+            container.error(f"⚠️ Ошибка: {str(e)}")
 
 elif page == "Предсказание":
     st.header("🔮 Предсказания - магия данных")
