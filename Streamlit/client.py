@@ -14,9 +14,9 @@ logger = logging.getLogger("ml_app")
 logger.setLevel(logging.INFO)
 handler = TimedRotatingFileHandler(
     filename=os.path.join(LOG_FOLDER, "ml_app.log"),
-    when="midnight",
+    when="midnight",  # Ротация логов каждую ночь
     interval=1,
-    backupCount=7,
+    backupCount=7,  # Храним логи за последние 7 дней
     encoding="utf-8",
 )
 formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
@@ -24,16 +24,18 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-async def train_model(file, model, model_id):
+# Асинхронное обучение модели
+async def train_model(file, model, model_id, update_container):
     logger.info(f"Начало обучения модели {model_id} с параметрами: {model}")
-    # Эмуляция долгой задачи
     for i in range(1, 6):
         await asyncio.sleep(1)  # Обновляемся каждую секунду
+        update_container.markdown(f"**💼 Обучение: {i * 20}% завершено...**")
         logger.info(f"Процесс обучения модели {model_id}: {i * 20}% завершено")
     logger.info(f"Обучение модели {model_id} завершено успешно!")
     return {"message": f"Обучение модели {model_id} завершено!", "accuracy": 98.7}
 
 
+# Интерфейс Streamlit
 st.markdown(
     """
     <style>
@@ -104,12 +106,10 @@ if page == "Обучение":
 
     if st.button("💃 Начать обучение модели", disabled=(file is None or not model_id)):
         container = st.empty()
-        with container.container():
-            st.spinner("✨ Обучение модели...")
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            results = loop.run_until_complete(train_model(file, f"{method[:-1]}({parameters})", model_id))
+            results = loop.run_until_complete(train_model(file, f"{method[:-1]}({parameters})", model_id, container))
             container.success("✅ Обучение завершено!")
             st.json(results)
         except Exception as e:
