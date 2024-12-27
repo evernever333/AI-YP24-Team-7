@@ -3,7 +3,8 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 import streamlit as st
 import asyncio
-import time
+import json
+import httpx
 
 # Папка для логов
 LOG_FOLDER = "logs"
@@ -24,18 +25,15 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-# Асинхронное обучение модели
-async def train_model(file, model, model_id, update_container):
-    logger.info(f"Начало обучения модели {model_id} с параметрами: {model}")
-    for i in range(1, 6):
-        await asyncio.sleep(1)  # Обновляемся каждую секунду
-        update_container.markdown(f"**Обучение: {i * 20}% завершено...**")
-        logger.info(f"Процесс обучения модели {model_id}: {i * 20}% завершено")
-    logger.info(f"Обучение модели {model_id} завершено успешно!")
-    return {"message": f"Обучение модели {model_id} завершено!", "accuracy": 98.7}
+# обучение модели
+async def train_model(file, config, update_container):
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{BASE_URL}/fit", file, json=config)
+        response.raise_for_status()
+        return response.json()
 
 
-# Асинхронное обучение модели
+# предсказание модели
 async def prediction(file, model_id, update_container):
     logger.info(f"Начало предсказания модели {model_id}")
     for i in range(1, 6):
@@ -96,22 +94,23 @@ if page == "Обучение":
         "Выбери метод:",
         ["SVC🕶", "LogisticRegression🌸", "RandomForestClassifier👛"],
     )
-    st.checkbox("Показать описательные статистики", disabled = file is None)
+    st.checkbox("Показать описательные статистики", disabled=file is None)
 
+    # Настройка параметров модели
+    params = {}
     if method == "SVC🕶":
         st.info("SVC (Support Vector Classifier) - шик для разделения! 👠🥑")
-        C = st.number_input("C", value=1.0)
-        kernel = st.selectbox("Kernel", ["linear", "rbf"], index=1)
-        parameters = f"C={C}, kernel='{kernel}'"
+        params["C"] = st.number_input("C", value=1.0)
+        params["kernel"] = st.selectbox("Kernel", ["linear", "rbf"], index=1)
+        params["class_weight"] = "balanced"
     elif method == "LogisticRegression🌸":
         st.info("Logistic Regression - твой гламурный анализ 📈💋")
-        C = st.number_input("C", value=1.0)
-        max_iter = st.number_input("Max iter", value=500)
-        parameters = f"C={C}, max_iter={max_iter}"
+        params["C"] = st.number_input("C", value=1.0)
+        params["max_iter"] = st.number_input("Max iter", value=500)
     elif method == "RandomForestClassifier👛":
         st.info("RandomForestClassifier👛 - разберётся во всём, как истинная королева 🌳✨")
-        n_estimators = st.number_input("n_estimators", value=100)
-        parameters = f"n_estimators={n_estimators}"
+        params["n_estimators"] = st.number_input("n_estimators", value=100)
+        params["random_state"] = 42
 
     st.write("Напиши своё имя и я назову модель в честь тебя 💋")
     model_id = st.text_input("ID модели", value=f"{method[:-1]}")
@@ -119,15 +118,21 @@ if page == "Обучение":
     if st.button("💃 Начать обучение модели", disabled=(file is None or not model_id)):
         container = st.empty()
         try:
+            config = {
+                "model": method[:-1],
+                "params": params,
+                "model_id": model_id,
+            }
+            st.json(config)  # Display JSON being sent for clarity
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            results = loop.run_until_complete(train_model(file, f"{method[:-1]}({parameters})", model_id, container))
+            results = loop.run_until_complete(train_model(file, config, container))
             container.success("✅ Обучение завершено!")
             st.json(results)
         except Exception as e:
             logger.error(f"Ошибка: {str(e)}")
             container.error(f"⚠️ Ошибка: {str(e)}")
-        
+
 
 elif page == "Предсказание":
     st.header("🔮 Предсказания - магия данных")
