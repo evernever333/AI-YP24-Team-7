@@ -29,11 +29,21 @@ async def train_model(file, model, model_id, update_container):
     logger.info(f"Начало обучения модели {model_id} с параметрами: {model}")
     for i in range(1, 6):
         await asyncio.sleep(1)  # Обновляемся каждую секунду
-        update_container.markdown(f"**💼 Обучение: {i * 20}% завершено...**")
+        update_container.markdown(f"**Обучение: {i * 20}% завершено...**")
         logger.info(f"Процесс обучения модели {model_id}: {i * 20}% завершено")
     logger.info(f"Обучение модели {model_id} завершено успешно!")
     return {"message": f"Обучение модели {model_id} завершено!", "accuracy": 98.7}
 
+
+# Асинхронное обучение модели
+async def prediction(file, model_id, update_container):
+    logger.info(f"Начало предсказания модели {model_id}")
+    for i in range(1, 6):
+        await asyncio.sleep(1)  # Обновляемся каждую секунду
+        update_container.markdown(f"**Предсказание: {i * 20}% завершено...**")
+        logger.info(f"Процесс предсказания модели {model_id}: {i * 20}% завершено")
+    logger.info(f"Предсказание модели {model_id} завершено успешно!")
+    return {"message": f"Предсказание модели {model_id} завершено!", "prediction": 98.7}
 
 # Интерфейс Streamlit
 st.markdown(
@@ -86,6 +96,7 @@ if page == "Обучение":
         "Выбери метод:",
         ["SVC🕶", "LogisticRegression🌸", "RandomForestClassifier👛"],
     )
+    st.checkbox("Показать описательные статистики", disabled = file is None)
 
     if method == "SVC🕶":
         st.info("SVC (Support Vector Classifier) - шик для разделения! 👠🥑")
@@ -102,6 +113,7 @@ if page == "Обучение":
         n_estimators = st.number_input("n_estimators", value=100)
         parameters = f"n_estimators={n_estimators}"
 
+    st.write("Напиши своё имя и я назову модель в честь тебя 💋")
     model_id = st.text_input("ID модели", value=f"{method[:-1]}")
 
     if st.button("💃 Начать обучение модели", disabled=(file is None or not model_id)):
@@ -115,7 +127,25 @@ if page == "Обучение":
         except Exception as e:
             logger.error(f"Ошибка: {str(e)}")
             container.error(f"⚠️ Ошибка: {str(e)}")
+        
 
 elif page == "Предсказание":
     st.header("🔮 Предсказания - магия данных")
     st.write("Скоро здесь будет магия ✨")
+    st.write("Загрузи свои тестовые данные, милашка 😘")
+
+    # Загрузка файла
+    file = st.file_uploader("Выбери файл", type=["zip"])
+    st.write("Напиши имя модели 💋")
+    model_id = st.text_input("ID модели", value=f"SVC")
+    if st.button("💃 Начать магичить", disabled=(file is None or not model_id)):
+        container = st.empty()
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            results = loop.run_until_complete(prediction(file, model_id, container))
+            container.success("✅ Предсказания получены!")
+            st.json(results)
+        except Exception as e:
+            logger.error(f"Ошибка: {str(e)}")
+            container.error(f"⚠️ Ошибка: {str(e)}")
