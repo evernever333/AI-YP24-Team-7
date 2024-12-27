@@ -24,7 +24,7 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "shared
 
 def load_images_and_labels(base_dir: str, category: str, sample_percentage: float = 0.15) -> tuple[np.ndarray, np.ndarray]:
     """
-    Загрузка изображений и меток из указанной категории.
+    Загрузка изображений и меток из указанной категории, игнорируя промежуточные папки.
 
     :param base_dir: Базовая директория, содержащая папки с изображениями.
     :param category: Категория ("train", "test", "validation").
@@ -56,6 +56,7 @@ def load_images_and_labels(base_dir: str, category: str, sample_percentage: floa
     return np.array(images), np.array(labels)
 
 
+
 def get_model_from_client(model_data: dict) -> object:
     """
     Создание классификатора на основе данных, полученных от клиента.
@@ -79,7 +80,7 @@ def get_model_from_client(model_data: dict) -> object:
 async def fit(
         file: UploadFile = File(...),
         model: str = Form(...),  # JSON с моделью и параметрами
-        id: str = Form(...)  # Имя модели (идентификатор)
+        #id: str = Form(...)  # Имя модели (идентификатор)
 ):
     """
     Эндпоинт для тренировки модели на загруженном наборе данных.
@@ -91,18 +92,19 @@ async def fit(
     """
     try:
         # 1. Распаковываем архив в общую папку
-        os.makedirs(BASE_DIR, exist_ok=True)
+        dataset_dir = os.path.join(BASE_DIR, "dataset")
+        os.makedirs(dataset_dir, exist_ok=True)
 
         zip_path = os.path.join(BASE_DIR, file.filename)
         with open(zip_path, "wb") as buffer:
             buffer.write(await file.read())
 
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(BASE_DIR)
+            zip_ref.extractall(dataset_dir)
 
         # 2. Загружаем данные
-        train_images, train_labels = load_images_and_labels(BASE_DIR, "train", sample_percentage=0.15)
-        test_images, test_labels = load_images_and_labels(BASE_DIR, "test", sample_percentage=0.15)
+        train_images, train_labels = load_images_and_labels(dataset_dir, "train", sample_percentage=0.15)
+        test_images, test_labels = load_images_and_labels(dataset_dir, "test", sample_percentage=0.15)
 
         # 3. Применяем PCA
         pca = PCA(n_components=150, svd_solver='randomized', whiten=True, random_state=42)
@@ -121,28 +123,24 @@ async def fit(
         accuracy = accuracy_score(test_labels, y_pred)
 
         # 7. Сохраняем модель
+        model_id = model_data["model_id"]
         model_dir = os.path.join(BASE_DIR, "models")
         os.makedirs(model_dir, exist_ok=True)
-        model_path = os.path.join(model_dir, f"{id}.joblib")
+        model_path = os.path.join(model_dir, f"{model_id}.joblib")
         dump(classifier, model_path)
 
         # Чистим временные файлы
-        for item in os.listdir(BASE_DIR):
-            item_path = os.path.join(BASE_DIR, item)
-            if os.path.isfile(item_path) or item_path.endswith(file.filename):
-                os.remove(item_path)
-            elif os.path.isdir(item_path) and item not in ["models"]:
-                shutil.rmtree(item_path, ignore_errors=True)
+        shutil.rmtree(dataset_dir, ignore_errors=True)
+        os.remove(zip_path)
 
         return {
-            "id": id,
+            "id": model_id,
             "accuracy": accuracy,
             "model_path": model_path
         }
     except Exception as e:
         print(f"Ошибка при обучении модели: {e}")
         return {"error": str(e)}
-
 
 if __name__ == "__main__":
     import uvicorn
