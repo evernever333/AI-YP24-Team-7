@@ -27,8 +27,8 @@ logger.addHandler(handler)
 
 # обучение модели
 async def train_model(file, config, update_container):
-    async with httpx.AsyncClient() as client:
-        response = await client.post(f"{BASE_URL}/fit", file, json=config)
+    async with httpx.AsyncClient(timeout=1000) as client:
+        response = await client.post(f"{BASE_URL}/fit", files={"file": (file.name, file.getvalue(), file.type)}, data={"model": json.dumps(config)})
         response.raise_for_status()
         return response.json()
 
@@ -102,7 +102,7 @@ if page == "Обучение":
         st.info("SVC (Support Vector Classifier) - шик для разделения! 👠🥑")
         params["C"] = st.number_input("C", value=1.0)
         params["kernel"] = st.selectbox("Kernel", ["linear", "rbf"], index=1)
-        params["class_weight"] = "balanced"
+        params["class_weight"] = st.selectbox("Class weight", ["None", "balanced"], index=1)
     elif method == "LogisticRegression🌸":
         st.info("Logistic Regression - твой гламурный анализ 📈💋")
         params["C"] = st.number_input("C", value=1.0)
@@ -110,7 +110,6 @@ if page == "Обучение":
     elif method == "RandomForestClassifier👛":
         st.info("RandomForestClassifier👛 - разберётся во всём, как истинная королева 🌳✨")
         params["n_estimators"] = st.number_input("n_estimators", value=100)
-        params["random_state"] = 42
 
     st.write("Напиши своё имя и я назову модель в честь тебя 💋")
     model_id = st.text_input("ID модели", value=f"{method[:-1]}")
@@ -123,7 +122,7 @@ if page == "Обучение":
                 "params": params,
                 "model_id": model_id,
             }
-            st.json(config)  # Display JSON being sent for clarity
+            st.json(json.dumps(config))
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             results = loop.run_until_complete(train_model(file, config, container))
