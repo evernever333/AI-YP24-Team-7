@@ -5,13 +5,15 @@ import random
 import json
 import numpy as np
 import cv2
+import base64
 from fastapi import FastAPI, File, UploadFile, Form
+from fastapi.responses import JSONResponse
 from sklearn.decomposition import PCA
 from sklearn.metrics import accuracy_score
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from joblib import dump
+from joblib import dump, load
 
 app = FastAPI(
     title="Image Classification API",
@@ -25,7 +27,6 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "shared
 def load_images_and_labels(base_dir: str, category: str, sample_percentage: float = 0.15) -> tuple[np.ndarray, np.ndarray]:
     """
     Загрузка изображений и меток из указанной категории, игнорируя промежуточные папки.
-
     :param base_dir: Базовая директория, содержащая папки с изображениями.
     :param category: Категория ("train", "test", "validation").
     :param sample_percentage: Процент выборки изображений для загрузки.
@@ -55,12 +56,9 @@ def load_images_and_labels(base_dir: str, category: str, sample_percentage: floa
 
     return np.array(images), np.array(labels)
 
-
-
 def get_model_from_client(model_data: dict) -> object:
     """
     Создание классификатора на основе данных, полученных от клиента.
-
     :param model_data: Словарь с именем модели и её параметрами.
     :return: Объект классификатора.
     """
@@ -75,19 +73,15 @@ def get_model_from_client(model_data: dict) -> object:
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 
-
 @app.post("/fit")
 async def fit(
         file: UploadFile = File(...),
         model: str = Form(...),  # JSON с моделью и параметрами
-        #id: str = Form(...)  # Имя модели (идентификатор)
 ):
     """
     Эндпоинт для тренировки модели на загруженном наборе данных.
-
     :param file: Архив с данными для тренировки.
     :param model: JSON с описанием модели и её параметров.
-    :param id: Идентификатор модели.
     :return: Словарь с результатами тренировки.
     """
     try:
@@ -127,7 +121,7 @@ async def fit(
         model_dir = os.path.join(BASE_DIR, "models")
         os.makedirs(model_dir, exist_ok=True)
         model_path = os.path.join(model_dir, f"{model_id}.joblib")
-        dump(classifier, model_path)
+        dump((classifier, pca), model_path)
 
         # Чистим временные файлы
         shutil.rmtree(dataset_dir, ignore_errors=True)
@@ -141,6 +135,82 @@ async def fit(
     except Exception as e:
         print(f"Ошибка при обучении модели: {e}")
         return {"error": str(e)}
+
+@app.post("/predict")
+async def predict(
+        file: UploadFile = File(...),
+        model_id: str = Form(...)
+):
+    """
+    Эндпоинт для предсказания класса изображения с использованием сохраненной модели.
+    :param file: Изображение для классификации.
+    :param model_id: Идентификатор модели.
+    :return: Предсказанный класс изображения.
+    """
+    try:
+        # 1. Сохраняем загруженное изображение во временную папку
+        temp_dir = os.path.join(BASE_DIR, "temp_predict")
+        os.makedirs(temp_dir, exist_ok=True)
+
+        file_path = os.path.join(temp_dir, file.filename)
+        with open(file_path, "wb") as buffer:
+            buffer.write(await file.read())
+
+        # 2. Загружаем изображение
+        img = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            raise ValueError("Не удалось загрузить изображение. Проверьте путь или формат файла.")
+        img_output = cv2.resize(img, (224, 224))
+        img = cv2.resize(img, (64, 64))
+        img_flat = img.flatten().reshape(1, -1)
+
+        # 3. Загружаем модель и PCA
+        model_path = os.path.join(BASE_DIR, "models", f"{model_id}.joblib")
+        if not os.path.exists(model_path):
+            raise ValueError(f"Модель с ID '{model_id}' не найдена.")
+        classifier, pca = load(model_path)
+
+        # 4. Преобразуем изображение через PCA
+        reduced_img = pca.transform(img_flat)
+
+        # 5. Предсказываем класс
+        prediction = classifier.predict(reduced_img)
+
+        # Чистим временные файлы
+        os.remove(file_path)
+
+        # Список фраз
+        phrases = [
+            "Ох ты ж, это же...",
+            "Выглядит как...",
+            "Я думаю это...",
+            "К гадалке не ходи, это...",
+            "Держите меня семеро, это...",
+            "Встречайте!",
+            "Разыскивается."
+        ]
+
+        selected_phrase = random.choice(phrases)
+
+        # Конвертируем изображение в base64 строку
+        success, encoded_img = cv2.imencode('.jpg', img_output)
+        if not success:
+            raise ValueError("Не удалось закодировать изображение.")
+        img_base64 = base64.b64encode(encoded_img).decode('utf-8')
+
+        return {
+            "phrase": selected_phrase,
+            "prediction": prediction[0],
+            "image": f"data:image/jpeg;base64,{img_base64}"  # Передаем изображение в формате data URI
+        }
+    except Exception as e:
+        print(f"Ошибка при предсказании: {e}")
+        return JSONResponse({"error": str(e)})
+
+    #     return {"prediction": prediction[0]}
+    # except Exception as e:
+    #     print(f"Ошибка при предсказании: {e}")
+    #     return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
