@@ -5,6 +5,9 @@ import json
 import numpy as np
 import cv2
 import base64
+import shutil
+import logging
+from logging.handlers import TimedRotatingFileHandler
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from sklearn.decomposition import PCA
 from sklearn.metrics import accuracy_score, classification_report
@@ -47,8 +50,21 @@ LOGS_DIR = os.path.join(CURRENT_DIR, "logs")
 os.makedirs(SHARED_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
 
+# Настройка логгера
+logger = logging.getLogger("ml_app")
+if not logger.hasHandlers():
+    logger.setLevel(logging.INFO)
+    handler = TimedRotatingFileHandler(
+        filename=os.path.join(LOGS_DIR, "ml_app.log"),
+        when="midnight",  # Ротация логов каждую ночь
+        interval=1,
+        backupCount=7,  # Храним логи за последние 7 дней
+        encoding="utf-8",
+    )
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 BASE_DIR = SHARED_DIR
-LOG_FILE = os.path.join(LOGS_DIR, "ml_app.log")
 
 # Переименуем папку dataset в datasets
 datasets_dir = os.path.join(BASE_DIR, "datasets")
@@ -61,10 +77,6 @@ os.makedirs(models_dir, exist_ok=True)
 # Папка для временных файлов
 temp_predict_dir = os.path.join(BASE_DIR, "temp_predict")
 os.makedirs(temp_predict_dir, exist_ok=True)
-
-def log_message(message: str) -> None:
-    with open(LOG_FILE, "a") as log_file:
-        log_file.write(message + "\n")
 
 def load_images_and_labels(base_dir: str, category: str, sample_percentage: float = 0.15) -> Tuple[np.ndarray, np.ndarray]:
     """
@@ -187,7 +199,7 @@ async def fit(
             models_db.models.append(Model(id=model_id))
 
         # Логируем успешное обучение
-        log_message(f"Модель {model_id} успешно обучена с точностью {accuracy}.")
+        logger.info(f"Модель {model_id} успешно обучена с точностью {accuracy}.")
 
         return {
             "id": model_id,
@@ -195,7 +207,7 @@ async def fit(
             "report": report
             }
     except Exception as e:
-        log_message(f"Ошибка при обучении модели: {e}")
+        logger.info(f"Ошибка при обучении модели: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/predict")
@@ -269,7 +281,7 @@ async def predict(
             "image": f"data:image/jpeg;base64,{img_base64}"  # Передаем изображение в формате data URI
         }
     except Exception as e:
-        log_message(f"Ошибка при предсказании: {e}")
+        logger.info(f"Ошибка при предсказании: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/list_models", response_model=List[Model])
@@ -281,29 +293,18 @@ async def list_models() -> List[Model]:
     models = [Model(id=os.path.splitext(file)[0]) for file in model_files]
     return models
 
-@app.delete("/remove_all", response_model=List[SuccessResponse])
-async def remove_all() -> List[SuccessResponse]:
-    responses: List[SuccessResponse] = []
-
-    if os.path.exists(SHARED_DIR):
-        for root, dirs, files in os.walk(SHARED_DIR, topdown=False):
-            # Удаляем файлы в текущей директории
-            for file in files:
-                file_path = os.path.join(root, file)
-                if file.endswith(".joblib"):
-                    responses.append(SuccessResponse(message=f"Модель '{os.path.splitext(file)[0]}' удалена"))
-                os.remove(file_path)
-
-            # Удаляем пустые папки
-            for dir in dirs:
-                os.rmdir(os.path.join(root, dir))
-
-    # Создаем заново основные директории
-    for directory in [datasets_dir, models_dir, temp_predict_dir]:
-        os.makedirs(directory, exist_ok=True)
-
-    log_message("Все данные и модели удалены.")
-    return responses
+@app.delete("/remove_all", response_model=List[Model])
+async def remove_all() -> List[Model]:
+    models_path = os.path.join(SHARED_DIR)
+    model_files = [f for f in os.listdir(f'{models_path}/models') if f.endswith(".joblib")]
+    models = [Model(id=os.path.splitext(file)[0]) for file in model_files]
+    if not os.path.exists(models_path):
+        logger.info("Папка пуста")
+        return []
+    shutil.rmtree(models_path)
+    os.mkdir(models_path)
+    logger.info("Все данные и модели удалены.")
+    return models
 
 if __name__ == "__main__":
     import uvicorn
