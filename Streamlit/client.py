@@ -34,6 +34,14 @@ def highlight(val):
     color = '#00FA9A' if val > 0.5 else '#FFC0CB' if val > 0.3 else '#F08080'
     return f'background-color: {color}; color: black; font-weight: bold; border: 1px solid gold;'
 
+# получение eda
+async def eda(file):
+    """Обучение модели."""
+    async with httpx.AsyncClient(timeout=1000) as client:
+        response = await client.post(f"{BASE_URL}/eda", files={"file": (file.name, file.getvalue(), file.type)})
+        response.raise_for_status()
+        return response.json()
+
 # обучение модели
 async def train_model(file, config):
     """Обучение модели."""
@@ -118,7 +126,41 @@ if page == "Обучение":
         "Выбери метод:",
         ["SVC🕶", "LogisticRegression🌸", "RandomForestClassifier👛"],
     )
-    st.checkbox("Показать описательные статистики", disabled=file is None)
+
+    if st.checkbox("🚀 Показать EDA", disabled=file is None):
+        container = st.empty()
+        try:
+            st.title("✨ EDA для твоего датасетика 📊")
+            logger.info(f"Начато получение EDA")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            results = loop.run_until_complete(eda(file))
+            st.success(results["message"])
+            st.markdown("### 🚂 Распределение классов в Train:")
+            train_class_dist = results["train_class_dist"]
+            train_df = pd.DataFrame(
+                list(train_class_dist.items()), 
+                columns=["Класс", "Количество"]
+            )
+            train_df.index += 1  # Начинаем индексацию с 1
+            st.dataframe(train_df)
+
+            st.markdown("### 🧪 Распределение классов в Test:")
+            test_class_dist = results["test_class_dist"]
+            test_df = pd.DataFrame(
+                list(test_class_dist.items()), 
+                columns=["Класс", "Количество"]
+            )
+            test_df.index += 1  # Начинаем индексацию с 1
+            st.dataframe(test_df)
+            
+            st.markdown("### 🖼️ Визуализация результата:")
+            st.image(results["image"], caption="✨ Результат EDA", use_container_width=True)
+
+            logger.info(f"Закончено получение EDA")
+        except Exception as e:
+            logger.error(f"Ошибка при получении eda: {str(e)}")
+            container.error(f"⚠️ Ошибка: {str(e)}")
 
     # Настройка параметров модели
     params = {}
