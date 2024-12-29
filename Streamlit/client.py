@@ -35,13 +35,24 @@ async def train_model(file, config, update_container):
 
 # предсказание модели
 async def prediction(file, model_id, update_container):
-    logger.info(f"Начало предсказания модели {model_id}")
-    for i in range(1, 6):
-        await asyncio.sleep(1)  # Обновляемся каждую секунду
-        update_container.markdown(f"**Предсказание: {i * 20}% завершено...**")
-        logger.info(f"Процесс предсказания модели {model_id}: {i * 20}% завершено")
-    logger.info(f"Предсказание модели {model_id} завершено успешно!")
-    return {"message": f"Предсказание модели {model_id} завершено!", "prediction": 98.7}
+    async with httpx.AsyncClient(timeout=1000) as client:
+        response = await client.post(f"{BASE_URL}/predict", files={"file": (file.name, file.getvalue(), file.type)}, data={"model_id": model_id})
+        response.raise_for_status()
+        return response.json()
+
+async def list_models():
+    """Получение списка моделей."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{BASE_URL}/list_models")
+        response.raise_for_status()
+        return response.json()
+
+async def remove_all_models():
+    """Удаление всех моделей."""
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(f"{BASE_URL}/remove_all")
+        response.raise_for_status()
+        return response.json()
 
 # Интерфейс Streamlit
 st.markdown(
@@ -80,7 +91,7 @@ st.subheader("Сделай их жизнь ярче с предсказания�
 
 st.sidebar.title("🎨 Навигация")
 st.sidebar.write("Выбери раздел, bae 🌈")
-page = st.sidebar.radio(" ", ["Обучение", "Предсказание"])
+page = st.sidebar.radio(" ", ["Обучение", "Предсказание", "Список моделей", "Удаление моделей"])
 
 if page == "Обучение":
     st.header("👑 Обучение ML-модели")
@@ -122,7 +133,6 @@ if page == "Обучение":
                 "params": params,
                 "model_id": model_id,
             }
-            st.json(json.dumps(config))
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             results = loop.run_until_complete(train_model(file, config, container))
@@ -139,9 +149,13 @@ elif page == "Предсказание":
     st.write("Загрузи свои тестовые данные, милашка 😘")
 
     # Загрузка файла
-    file = st.file_uploader("Выбери файл", type=["zip"])
+    file = st.file_uploader("Выбери файл", type=["jpg", "png", "jpeg"])
+    if file is not None:
+        st.write("Вот твоё изображение, queen 👑")
+        st.image(file, caption="Твое загруженное изображение 💖", use_container_width=True)
+    
     st.write("Напиши имя модели 💋")
-    model_id = st.text_input("ID модели", value=f"SVC")
+    model_id = st.text_input("ID модели", value="SVC")
     if st.button("💃 Начать магичить", disabled=(file is None or not model_id)):
         container = st.empty()
         try:
@@ -153,3 +167,30 @@ elif page == "Предсказание":
         except Exception as e:
             logger.error(f"Ошибка: {str(e)}")
             container.error(f"⚠️ Ошибка: {str(e)}")
+
+elif page == "Список моделей":
+    st.header("📂 Список моделей")
+    if st.button("📋 Получить список моделей"):
+        with st.spinner("📂 Получение списка моделей..."):
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                models = loop.run_until_complete(list_models())
+                st.success("✅ Список моделей получен!")
+                st.json(models)
+            except Exception as e:
+                st.error(f"⚠️ Ошибка: {str(e)}")
+
+elif page == "Удаление моделей":
+    st.header("🗑️ Удаление всех моделей")
+    if st.button("❌ Удалить все модели"):
+        with st.spinner("🗑️ Удаление моделей..."):
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                results = loop.run_until_complete(remove_all_models())
+                st.success("✅ Все модели удалены!")
+                st.json(results)
+            except Exception as e:
+                st.error(f"⚠️ Ошибка: {str(e)}")
+
