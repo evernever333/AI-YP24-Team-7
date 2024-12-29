@@ -14,6 +14,8 @@ from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from joblib import dump, load
+from pydantic import BaseModel
+from typing import List, Dict
 
 app = FastAPI(
     title="Image Classification API",
@@ -21,8 +23,28 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Путь к общей папке
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "shared"))
+class SuccessResponse(BaseModel):
+    message: str
+
+class Model(BaseModel):
+    id: str
+
+class Models(BaseModel):
+    models: List[Model] = []
+
+models_db = Models()
+
+# Базовая директория, где будет все храниться
+CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
+SHARED_DIR = os.path.join(CURRENT_DIR, "shared")
+LOGS_DIR = os.path.join(CURRENT_DIR, "logs")
+
+# Создание папок, если они отсутствуют
+os.makedirs(SHARED_DIR, exist_ok=True)
+os.makedirs(LOGS_DIR, exist_ok=True)
+
+BASE_DIR = SHARED_DIR
+LOG_FILE = os.path.join(LOGS_DIR, "ml_app.log")
 
 def load_images_and_labels(base_dir: str, category: str, sample_percentage: float = 0.15) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -122,7 +144,9 @@ async def fit(
         os.makedirs(model_dir, exist_ok=True)
         model_path = os.path.join(model_dir, f"{model_id}.joblib")
         dump((classifier, pca), model_path)
-
+        existing_model = next((model for model in models_db.models if model.id == model_id), None)
+        if existing_model == None:
+            models_db.models.append(Model(id=model_id))
         # Чистим временные файлы
         shutil.rmtree(dataset_dir, ignore_errors=True)
         os.remove(zip_path)
@@ -207,11 +231,21 @@ async def predict(
         print(f"Ошибка при предсказании: {e}")
         return JSONResponse({"error": str(e)})
 
-    #     return {"prediction": prediction[0]}
-    # except Exception as e:
-    #     print(f"Ошибка при предсказании: {e}")
-    #     return {"error": str(e)}
+@app.get("/list_models", response_model=List[Model])
+async def list_models():
+    return models_db.models
+
+@app.delete("/remove_all", response_model=List[SuccessResponse])
+async def remove_all():
+    responses = []
+    models_path = os.path.join(SHARED_DIR, "models")
+    for model in models_db.models:
+        responses.append(SuccessResponse(message=f"Model '{model.id}' removed"))
+        model_file = os.path.join(models_path, f"{model.id}.joblib")
+        os.remove(model_file)
+    models_db.models = []
+    return responses
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
