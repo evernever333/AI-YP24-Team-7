@@ -64,6 +64,7 @@ if not logger.hasHandlers():
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
 BASE_DIR = SHARED_DIR
 
 # Переименуем папку dataset в datasets
@@ -268,18 +269,13 @@ async def predict(
 
         selected_phrase = random.choice(phrases)
 
-        # Конвертируем изображение в base64 строку
-        success, encoded_img = cv2.imencode('.jpg', img_output)
-        if not success:
-            raise HTTPException(status_code=500, detail="Не удалось закодировать изображение.")
-
-        img_base64 = base64.b64encode(encoded_img).decode('utf-8')
+        # Логируем успешное предсказание
+        logger.info(f"Предсказание успешно произведено {prediction[0]}.")
 
         return {
             "phrase": selected_phrase,
             "prediction": prediction[0],
-            "image": f"data:image/jpeg;base64,{img_base64}"  # Передаем изображение в формате data URI
-        }
+            }
     except Exception as e:
         logger.info(f"Ошибка при предсказании: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -291,6 +287,7 @@ async def list_models() -> List[Model]:
         return []
     model_files = [f for f in os.listdir(models_path) if f.endswith(".joblib")]
     models = [Model(id=os.path.splitext(file)[0]) for file in model_files]
+    logger.info("Список моделей получен.")
     return models
 
 @app.delete("/remove_all", response_model=List[Model])
