@@ -5,6 +5,8 @@ import streamlit as st
 import asyncio
 import json
 import httpx
+import pandas as pd
+import plotly.express as px
 
 # Папка для логов
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -26,13 +28,17 @@ if not logger.hasHandlers():
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-
+def highlight(val):
+    if pd.isna(val):
+        return ''
+    color = '#00FA9A' if val > 0.5 else '#FFC0CB' if val > 0.3 else '#F08080'
+    return f'background-color: {color}; color: black; font-weight: bold; border: 1px solid gold;'
 
 # обучение модели
 async def train_model(file, config):
     """Обучение модели."""
     async with httpx.AsyncClient(timeout=1000) as client:
-        response = await client.post(f"{BASE_URL}/fit", files={"file": (file.name, file.getvalue(), file.type)}, data={"model": json.dumps(config)})
+        response = await client.post(f"{BASE_URL}/fit", files={"file": (file.name, file.getvalue(), file.type)}, data={"model_data": config})
         response.raise_for_status()
         return response.json()
 
@@ -56,7 +62,7 @@ async def list_models():
 # удаление всех моделей
 async def remove_all_models():
     """Удаление всех моделей."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=1000) as client:
         response = await client.delete(f"{BASE_URL}/remove_all")
         response.raise_for_status()
         return response.json()
@@ -135,11 +141,11 @@ if page == "Обучение":
     if st.button("💃 Начать обучение модели", disabled=(file is None or not model_id)):
         container = st.empty()
         try:
-            config = {
+            config = json.dumps({
                 "model": method[:-1],
                 "params": params,
                 "model_id": model_id,
-            }
+            })
             logger.info(f"Начато обучение модели с ID: {model_id}, метод: {method[:-1]}, параметры: {params}")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -152,6 +158,19 @@ if page == "Обучение":
                 - **Точность:** `{results['accuracy']:.2%}`
                 """
             )
+            df = pd.DataFrame(results['report']).T.reset_index()
+            df = df.rename(columns={'index': 'Class'})
+            st.title("💅 Slaaaay Таблица Результатов")
+            st.write("Взгляни на эту красотку таблицу ✨")
+            st.dataframe(
+                df.style.applymap(highlight, subset=['precision', 'recall', 'f1-score'])
+            )
+            st.subheader("🎨 Визуализация")
+
+            for metric in ['precision', 'recall', 'f1-score']:
+                fig = px.pie(df[:-2], values=metric, names='Class', title=f"{metric.title()} Распределение 💖")
+                fig.update_traces(textinfo='percent+label', pull=[0.05]*len(df))
+                st.plotly_chart(fig)
             logger.info(f"Обучение модели {model_id} завершено успешно. Результаты: {results}")
         except Exception as e:
             logger.error(f"Ошибка при обучении модели {model_id}: {str(e)}")
@@ -197,7 +216,7 @@ elif page == "Список моделей":
                 asyncio.set_event_loop(loop)
                 models = loop.run_until_complete(list_models())
                 if models:
-                    st.markdown("### 📂 Список моделей:")
+                    st.markdown("### 📋 Список моделей:")
                     for model in models:
                         st.markdown(f"- **ID:** `{model['id']}`")
                     st.success("✅ Список моделей получен!")
@@ -219,9 +238,9 @@ elif page == "Удаление моделей":
                 asyncio.set_event_loop(loop)
                 results = loop.run_until_complete(remove_all_models())
                 if results:
-                    st.markdown("### 🗑️ Удалено:")
+                    st.markdown("### ❌ Удалено:")
                     for result in results:
-                        st.markdown(f"- {result['message']}")
+                        st.markdown(f"- **ID:** `{result['id']}`")
                     st.success("✅ Все модели удалены!")
                     logger.info(f"Все модели успешно удалены: {results}")
                 else:
