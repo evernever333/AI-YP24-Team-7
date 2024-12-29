@@ -5,22 +5,22 @@ import json
 import numpy as np
 import cv2
 import base64
-import shutil
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from sklearn.decomposition import PCA
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, classification_report
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from joblib import dump, load
 from pydantic import BaseModel, ValidationError, Field
-from typing import List, Dict
+from typing import List, Dict, Tuple, Union
 
 app = FastAPI(
     title="Image Classification API",
     description="API for uploading a dataset, specifying model parameters, and training an image classification model.",
     version="1.0.0"
 )
+
 class ModelData(BaseModel):
     model: str = Field(..., description="Название модели, например, 'SVC'.")
     params: Dict = Field(default_factory=dict, description="Параметры для модели.")
@@ -62,11 +62,11 @@ os.makedirs(models_dir, exist_ok=True)
 temp_predict_dir = os.path.join(BASE_DIR, "temp_predict")
 os.makedirs(temp_predict_dir, exist_ok=True)
 
-def log_message(message: str):
+def log_message(message: str) -> None:
     with open(LOG_FILE, "a") as log_file:
         log_file.write(message + "\n")
 
-def load_images_and_labels(base_dir: str, category: str, sample_percentage: float = 0.15) -> tuple[np.ndarray, np.ndarray]:
+def load_images_and_labels(base_dir: str, category: str, sample_percentage: float = 0.15) -> Tuple[np.ndarray, np.ndarray]:
     """
     Загрузка изображений и меток из указанной категории, игнорируя промежуточные папки.
     :param base_dir: Базовая директория, содержащая папки с изображениями.
@@ -74,8 +74,8 @@ def load_images_and_labels(base_dir: str, category: str, sample_percentage: floa
     :param sample_percentage: Процент выборки изображений для загрузки.
     :return: кортеж из массива изображений и соответствующих им меток.
     """
-    images = []
-    labels = []
+    images: List[np.ndarray] = []
+    labels: List[str] = []
 
     # Ищем папку категории на любом уровне вложенности
     for root, dirs, files in os.walk(base_dir):
@@ -101,7 +101,7 @@ def load_images_and_labels(base_dir: str, category: str, sample_percentage: floa
 
     return np.array(images), np.array(labels)
 
-def get_model_from_client(model_data: dict) -> object:
+def get_model_from_client(model_data: Dict) -> Union[SVC, LogisticRegression, RandomForestClassifier]:
     """
     Создание классификатора на основе данных, полученных от клиента.
     :param model_data: Словарь с именем модели и её параметрами.
@@ -125,7 +125,7 @@ def get_model_from_client(model_data: dict) -> object:
 async def fit(
         file: UploadFile = File(...),
         model_data: str = Form(...),
-):
+) -> Dict:
     """
     Эндпоинт для тренировки модели на загруженном наборе данных.
     :param file: Архив с данными для тренировки.
@@ -167,6 +167,7 @@ async def fit(
             classifier = get_model_from_client(validated_model_data.dict())
         except Exception:
             raise HTTPException(status_code=400, detail="Некорректный формат модели.")
+
         # 5. Обучаем модель
         classifier.fit(reduced_train_images, train_labels)
 
@@ -174,7 +175,10 @@ async def fit(
         y_pred = classifier.predict(reduced_test_images)
         accuracy = accuracy_score(test_labels, y_pred)
 
-        # 7. Сохраняем модель
+        # 7. Создаем отчет об обучении
+        report = classification_report(test_labels, y_pred, output_dict=True)
+
+        # 8. Сохраняем модель
         model_id = validated_model_data.model_id
         model_path = os.path.join(models_dir, f"{model_id}.joblib")
         dump((classifier, pca), model_path)
@@ -188,8 +192,8 @@ async def fit(
         return {
             "id": model_id,
             "accuracy": accuracy,
-            "model_path": model_path
-        }
+            "report": report
+            }
     except Exception as e:
         log_message(f"Ошибка при обучении модели: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -198,7 +202,7 @@ async def fit(
 async def predict(
         file: UploadFile = File(...),
         model_id: str = Form(...)
-):
+) -> Dict[str, Union[str, float]]:
     """
     Эндпоинт для предсказания класса изображения с использованием сохраненной модели.
     :param file: Изображение для классификации.
@@ -269,7 +273,7 @@ async def predict(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/list_models", response_model=List[Model])
-async def list_models():
+async def list_models() -> List[Model]:
     models_path = os.path.join(SHARED_DIR, "models")  # Путь к папке моделей
     if not os.path.exists(models_path):
         return []
@@ -278,26 +282,25 @@ async def list_models():
     return models
 
 @app.delete("/remove_all", response_model=List[SuccessResponse])
-async def remove_all():
-    models_path = os.path.join(SHARED_DIR, "models")
-    responses = []
-    if os.path.exists(models_path):
-        for file in os.listdir(models_path):
-            if file.endswith(".joblib"):
-                os.remove(os.path.join(models_path, file))
-                responses.append(SuccessResponse(message=f"Model '{os.path.splitext(file)[0]}' removed"))
+async def remove_all() -> List[SuccessResponse]:
+    responses: List[SuccessResponse] = []
 
-    # Очистка папок
+    if os.path.exists(SHARED_DIR):
+        for root, dirs, files in os.walk(SHARED_DIR, topdown=False):
+            # Удаляем файлы в текущей директории
+            for file in files:
+                file_path = os.path.join(root, file)
+                if file.endswith(".joblib"):
+                    responses.append(SuccessResponse(message=f"Модель '{os.path.splitext(file)[0]}' удалена"))
+                os.remove(file_path)
+
+            # Удаляем пустые папки
+            for dir in dirs:
+                os.rmdir(os.path.join(root, dir))
+
+    # Создаем заново основные директории
     for directory in [datasets_dir, models_dir, temp_predict_dir]:
-        if os.path.exists(directory):
-            shutil.rmtree(directory)
-            os.makedirs(directory, exist_ok=True)
-
-    # Очистка всех файлов в корне SHARED_DIR
-    for item in os.listdir(SHARED_DIR):
-        item_path = os.path.join(SHARED_DIR, item)
-        if os.path.isfile(item_path):
-            os.remove(item_path)
+        os.makedirs(directory, exist_ok=True)
 
     log_message("Все данные и модели удалены.")
     return responses
