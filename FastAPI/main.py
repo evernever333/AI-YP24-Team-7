@@ -4,7 +4,6 @@ import random
 import json
 import numpy as np
 import cv2
-import base64
 import shutil
 import logging
 from logging.handlers import TimedRotatingFileHandler
@@ -17,6 +16,10 @@ from sklearn.ensemble import RandomForestClassifier
 from joblib import dump, load
 from pydantic import BaseModel, ValidationError, Field
 from typing import List, Dict, Tuple, Union
+import matplotlib.pyplot as plt
+from collections import Counter
+from io import BytesIO
+import base64
 
 app = FastAPI(
     title="Image Classification API",
@@ -29,16 +32,8 @@ class ModelData(BaseModel):
     params: Dict = Field(default_factory=dict, description="Параметры для модели.")
     model_id: str = Field(..., description="Уникальный идентификатор для сохранения модели.")
 
-class SuccessResponse(BaseModel):
-    message: str
-
 class Model(BaseModel):
     id: str
-
-class Models(BaseModel):
-    models: List[Model] = []
-
-models_db = Models()
 
 # Базовая директория, где будет все храниться
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -91,7 +86,7 @@ def load_images_and_labels(base_dir: str, category: str, sample_percentage: floa
     labels: List[str] = []
 
     # Ищем папку категории на любом уровне вложенности
-    for root, dirs, files in os.walk(base_dir):
+    for root, _, _ in os.walk(base_dir):
         if os.path.basename(root) == category:
             for class_name in os.listdir(root):
                 class_dir = os.path.join(root, class_name)
@@ -181,6 +176,8 @@ async def fit(
         except Exception:
             raise HTTPException(status_code=400, detail="Некорректный формат модели.")
 
+        logger.info(f"Начали обучение")
+
         # 5. Обучаем модель
         classifier.fit(reduced_train_images, train_labels)
 
@@ -195,9 +192,6 @@ async def fit(
         model_id = validated_model_data.model_id
         model_path = os.path.join(models_dir, f"{model_id}.joblib")
         dump((classifier, pca), model_path)
-        existing_model = next((model for model in models_db.models if model.id == model_id), None)
-        if existing_model is None:
-            models_db.models.append(Model(id=model_id))
 
         # Логируем успешное обучение
         logger.info(f"Модель {model_id} успешно обучена с точностью {accuracy}.")
@@ -239,7 +233,6 @@ async def predict(
         img = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
         if img is None:
             raise HTTPException(status_code=400, detail="Не удалось загрузить изображение. Проверьте путь или формат файла.")
-        img_output = cv2.resize(img, (224, 224))
         img = cv2.resize(img, (64, 64))
         img_flat = img.flatten().reshape(1, -1)
 
@@ -253,6 +246,7 @@ async def predict(
         # 4. Преобразуем изображение через PCA
         reduced_img = pca.transform(img_flat)
 
+        logger.info(f"Начали предсказывать")
         # 5. Предсказываем класс
         prediction = classifier.predict(reduced_img)
 
@@ -282,6 +276,7 @@ async def predict(
 
 @app.get("/list_models", response_model=List[Model])
 async def list_models() -> List[Model]:
+    logger.info(f"Получение моделей...")
     models_path = os.path.join(SHARED_DIR, "models")  # Путь к папке моделей
     if not os.path.exists(models_path):
         return []
@@ -292,6 +287,7 @@ async def list_models() -> List[Model]:
 
 @app.delete("/remove_all", response_model=List[Model])
 async def remove_all() -> List[Model]:
+    logger.info(f"Удаление моделей...")
     models_path = os.path.join(SHARED_DIR)
     model_files = [f for f in os.listdir(f'{models_path}/models') if f.endswith(".joblib")]
     models = [Model(id=os.path.splitext(file)[0]) for file in model_files]
@@ -302,6 +298,70 @@ async def remove_all() -> List[Model]:
     os.mkdir(models_path)
     logger.info("Все данные и модели удалены.")
     return models
+
+@app.post("/eda")
+async def eda(
+        file: UploadFile = File(...),
+) -> Dict:
+    """
+    Анализ Exploratory Data Analysis (EDA) на основе загруженного архива изображений.
+    """
+    try:
+        logger.info("Начали получение EDA")
+        # 1. Сохраняем zip-файл и распаковываем
+        zip_path = os.path.join(BASE_DIR, file.filename)
+        with open(zip_path, "wb") as buffer:
+            buffer.write(await file.read())
+
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(datasets_dir)
+
+        # 2. Загружаем изображения из train и test
+        train_images, train_labels = load_images_and_labels(datasets_dir, "train", sample_percentage=1.0)
+        test_images, test_labels = load_images_and_labels(datasets_dir, "test", sample_percentage=1.0)
+
+        # 3. Анализ распределения классов
+        train_counter = Counter(train_labels)
+        test_counter = Counter(test_labels)
+
+        fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+        ax[0].bar(train_counter.keys(), train_counter.values(), color='skyblue')
+        ax[0].set_title("Train Class Distribution")
+        ax[0].set_xticks(list(range(len(train_counter.keys()))))
+        ax[0].set_xticklabels(train_counter.keys(), rotation=45)
+
+        ax[1].bar(test_counter.keys(), test_counter.values(), color='salmon')
+        ax[1].set_title("Test Class Distribution")
+        ax[1].set_xticks(list(range(len(test_counter.keys()))))
+        ax[1].set_xticklabels(test_counter.keys(), rotation=45)
+
+        plt.tight_layout()
+
+        # 4. Пример изображений (первые 5)
+        fig2, axs = plt.subplots(1, 5, figsize=(15, 5))
+        for i in range(5):
+            axs[i].imshow(train_images[i].reshape(64, 64), cmap='gray')
+            axs[i].set_title(train_labels[i])
+            axs[i].axis('off')
+        plt.suptitle("Sample Images", fontsize=16)
+
+        # 5. Преобразуем графики в base64 для отправки
+        buffer = BytesIO()
+        plt.savefig(buffer, format="png")
+        buffer.seek(0)
+        encoded_img = base64.b64encode(buffer.read()).decode("utf-8")
+        plt.close()
+        logger.info("Получение EDA закончено")
+        return {
+            "message": "EDA выполнен успешно!",
+            "train_class_dist": dict(train_counter),
+            "test_class_dist": dict(test_counter),
+            "image": f"data:image/png;base64,{encoded_img}"
+        }
+
+    except Exception as e:
+        logger.error(f"Ошибка при EDA: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
