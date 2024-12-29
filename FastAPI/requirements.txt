@@ -1,0 +1,12 @@
+fastapi~=0.115.5
+pydantic~=2.9.2
+uvicorn~=0.32.0
+scikit-learn~=1.5.2
+numpy~=2.2.1
+streamlit~=1.41.1
+httpx~=0.28.1
+joblib~=1.4.2
+tqdm~=4.66.3
+opencv-python~=4.10.0.84
+python-multipart~=0.0.20
+matplotlib~=3.6.2
