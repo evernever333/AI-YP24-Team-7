@@ -1,20 +1,19 @@
 import os
 import zipfile
-import shutil
 import random
 import json
 import numpy as np
 import cv2
 import base64
-from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import JSONResponse
+import shutil
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from sklearn.decomposition import PCA
 from sklearn.metrics import accuracy_score
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from joblib import dump, load
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError, Field
 from typing import List, Dict
 
 app = FastAPI(
@@ -22,6 +21,10 @@ app = FastAPI(
     description="API for uploading a dataset, specifying model parameters, and training an image classification model.",
     version="1.0.0"
 )
+class ModelData(BaseModel):
+    model: str = Field(..., description="Название модели, например, 'SVC'.")
+    params: Dict = Field(default_factory=dict, description="Параметры для модели.")
+    model_id: str = Field(..., description="Уникальный идентификатор для сохранения модели.")
 
 class SuccessResponse(BaseModel):
     message: str
@@ -36,7 +39,8 @@ models_db = Models()
 
 # Базовая директория, где будет все храниться
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
-SHARED_DIR = os.path.join(CURRENT_DIR, "shared")
+PARENT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+SHARED_DIR = os.path.join(PARENT_DIR, "shared")
 LOGS_DIR = os.path.join(CURRENT_DIR, "logs")
 
 # Создание папок, если они отсутствуют
@@ -45,6 +49,22 @@ os.makedirs(LOGS_DIR, exist_ok=True)
 
 BASE_DIR = SHARED_DIR
 LOG_FILE = os.path.join(LOGS_DIR, "ml_app.log")
+
+# Переименуем папку dataset в datasets
+datasets_dir = os.path.join(BASE_DIR, "datasets")
+os.makedirs(datasets_dir, exist_ok=True)
+
+# Папка для моделей
+models_dir = os.path.join(BASE_DIR, "models")
+os.makedirs(models_dir, exist_ok=True)
+
+# Папка для временных файлов
+temp_predict_dir = os.path.join(BASE_DIR, "temp_predict")
+os.makedirs(temp_predict_dir, exist_ok=True)
+
+def log_message(message: str):
+    with open(LOG_FILE, "a") as log_file:
+        log_file.write(message + "\n")
 
 def load_images_and_labels(base_dir: str, category: str, sample_percentage: float = 0.15) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -76,6 +96,9 @@ def load_images_and_labels(base_dir: str, category: str, sample_percentage: floa
                         labels.append(class_name)
             break  # Останавливаем поиск, если нужная папка найдена
 
+    if not images or not labels:
+        raise ValueError(f"Категория {category} пуста или содержит некорректные данные.")
+
     return np.array(images), np.array(labels)
 
 def get_model_from_client(model_data: dict) -> object:
@@ -84,7 +107,10 @@ def get_model_from_client(model_data: dict) -> object:
     :param model_data: Словарь с именем модели и её параметрами.
     :return: Объект классификатора.
     """
-    model_name = model_data["model"]
+    model_name = model_data.get("model")
+    if not model_name:
+        raise ValueError("Модель не указана.")
+
     params = model_data.get("params", {})
     if model_name == "SVC":
         return SVC(**params)
@@ -98,19 +124,28 @@ def get_model_from_client(model_data: dict) -> object:
 @app.post("/fit")
 async def fit(
         file: UploadFile = File(...),
-        model: str = Form(...),  # JSON с моделью и параметрами
+        model_data: str = Form(...),
 ):
     """
     Эндпоинт для тренировки модели на загруженном наборе данных.
     :param file: Архив с данными для тренировки.
-    :param model: JSON с описанием модели и её параметров.
+    :param model_data: JSON с описанием модели и её параметров.
     :return: Словарь с результатами тренировки.
     """
     try:
-        # 1. Распаковываем архив в общую папку
-        dataset_dir = os.path.join(BASE_DIR, "dataset")
-        os.makedirs(dataset_dir, exist_ok=True)
+        # Проверка входных данных
+        if not file.filename.endswith(".zip"):
+            raise HTTPException(status_code=400, detail="Файл должен быть в формате .zip")
 
+        # Валидация JSON данных модели
+        try:
+            model_data = json.loads(model_data)
+            validated_model_data = ModelData(**model_data)
+        except (json.JSONDecodeError, ValidationError) as e:
+            raise HTTPException(status_code=400, detail=f"Ошибка валидации JSON: {e}")
+
+        # 1. Распаковываем архив в общую папку
+        dataset_dir = datasets_dir
         zip_path = os.path.join(BASE_DIR, file.filename)
         with open(zip_path, "wb") as buffer:
             buffer.write(await file.read())
@@ -128,9 +163,10 @@ async def fit(
         reduced_test_images = pca.transform(test_images)
 
         # 4. Создаем модель на основе данных клиента
-        model_data = json.loads(model)
-        classifier = get_model_from_client(model_data)
-
+        try:
+            classifier = get_model_from_client(validated_model_data.dict())
+        except Exception:
+            raise HTTPException(status_code=400, detail="Некорректный формат модели.")
         # 5. Обучаем модель
         classifier.fit(reduced_train_images, train_labels)
 
@@ -139,17 +175,15 @@ async def fit(
         accuracy = accuracy_score(test_labels, y_pred)
 
         # 7. Сохраняем модель
-        model_id = model_data["model_id"]
-        model_dir = os.path.join(BASE_DIR, "models")
-        os.makedirs(model_dir, exist_ok=True)
-        model_path = os.path.join(model_dir, f"{model_id}.joblib")
+        model_id = validated_model_data.model_id
+        model_path = os.path.join(models_dir, f"{model_id}.joblib")
         dump((classifier, pca), model_path)
         existing_model = next((model for model in models_db.models if model.id == model_id), None)
-        if existing_model == None:
+        if existing_model is None:
             models_db.models.append(Model(id=model_id))
-        # Чистим временные файлы
-        shutil.rmtree(dataset_dir, ignore_errors=True)
-        os.remove(zip_path)
+
+        # Логируем успешное обучение
+        log_message(f"Модель {model_id} успешно обучена с точностью {accuracy}.")
 
         return {
             "id": model_id,
@@ -157,8 +191,8 @@ async def fit(
             "model_path": model_path
         }
     except Exception as e:
-        print(f"Ошибка при обучении модели: {e}")
-        return {"error": str(e)}
+        log_message(f"Ошибка при обучении модели: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/predict")
 async def predict(
@@ -172,26 +206,31 @@ async def predict(
     :return: Предсказанный класс изображения.
     """
     try:
-        # 1. Сохраняем загруженное изображение во временную папку
-        temp_dir = os.path.join(BASE_DIR, "temp_predict")
-        os.makedirs(temp_dir, exist_ok=True)
+        # Проверка входных данных
+        if not model_id:
+            raise HTTPException(status_code=400, detail="Идентификатор модели не указан.")
 
-        file_path = os.path.join(temp_dir, file.filename)
+        if not file.filename.lower().endswith((".png", ".jpg", ".jpeg")):
+            raise HTTPException(status_code=400, detail="Файл должен быть изображением (.png, .jpg, .jpeg).")
+
+        # 1. Сохраняем загруженное изображение во временную папку
+        file_path = os.path.join(temp_predict_dir, file.filename)
         with open(file_path, "wb") as buffer:
             buffer.write(await file.read())
 
         # 2. Загружаем изображение
         img = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
         if img is None:
-            raise ValueError("Не удалось загрузить изображение. Проверьте путь или формат файла.")
+            raise HTTPException(status_code=400, detail="Не удалось загрузить изображение. Проверьте путь или формат файла.")
         img_output = cv2.resize(img, (224, 224))
         img = cv2.resize(img, (64, 64))
         img_flat = img.flatten().reshape(1, -1)
 
         # 3. Загружаем модель и PCA
-        model_path = os.path.join(BASE_DIR, "models", f"{model_id}.joblib")
+        model_path = os.path.join(models_dir, f"{model_id}.joblib")
         if not os.path.exists(model_path):
-            raise ValueError(f"Модель с ID '{model_id}' не найдена.")
+            raise HTTPException(status_code=404, detail=f"Модель с ID '{model_id}' не найдена.")
+
         classifier, pca = load(model_path)
 
         # 4. Преобразуем изображение через PCA
@@ -200,9 +239,6 @@ async def predict(
         # 5. Предсказываем класс
         prediction = classifier.predict(reduced_img)
 
-        # Чистим временные файлы
-        os.remove(file_path)
-
         # Список фраз
         phrases = [
             "Ох ты ж, это же...",
@@ -210,8 +246,8 @@ async def predict(
             "Я думаю это...",
             "К гадалке не ходи, это...",
             "Держите меня семеро, это...",
-            "Встречайте!",
-            "Разыскивается."
+            "Встречайте!...",
+            "Тысяча чертей, вот и..."
         ]
 
         selected_phrase = random.choice(phrases)
@@ -219,7 +255,8 @@ async def predict(
         # Конвертируем изображение в base64 строку
         success, encoded_img = cv2.imencode('.jpg', img_output)
         if not success:
-            raise ValueError("Не удалось закодировать изображение.")
+            raise HTTPException(status_code=500, detail="Не удалось закодировать изображение.")
+
         img_base64 = base64.b64encode(encoded_img).decode('utf-8')
 
         return {
@@ -228,24 +265,43 @@ async def predict(
             "image": f"data:image/jpeg;base64,{img_base64}"  # Передаем изображение в формате data URI
         }
     except Exception as e:
-        print(f"Ошибка при предсказании: {e}")
-        return JSONResponse({"error": str(e)})
+        log_message(f"Ошибка при предсказании: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/list_models", response_model=List[Model])
 async def list_models():
-    return models_db.models
+    models_path = os.path.join(SHARED_DIR, "models")  # Путь к папке моделей
+    if not os.path.exists(models_path):
+        return []
+    model_files = [f for f in os.listdir(models_path) if f.endswith(".joblib")]
+    models = [Model(id=os.path.splitext(file)[0]) for file in model_files]
+    return models
 
 @app.delete("/remove_all", response_model=List[SuccessResponse])
 async def remove_all():
-    responses = []
     models_path = os.path.join(SHARED_DIR, "models")
-    for model in models_db.models:
-        responses.append(SuccessResponse(message=f"Model '{model.id}' removed"))
-        model_file = os.path.join(models_path, f"{model.id}.joblib")
-        os.remove(model_file)
-    models_db.models = []
+    responses = []
+    if os.path.exists(models_path):
+        for file in os.listdir(models_path):
+            if file.endswith(".joblib"):
+                os.remove(os.path.join(models_path, file))
+                responses.append(SuccessResponse(message=f"Model '{os.path.splitext(file)[0]}' removed"))
+
+    # Очистка папок
+    for directory in [datasets_dir, models_dir, temp_predict_dir]:
+        if os.path.exists(directory):
+            shutil.rmtree(directory)
+            os.makedirs(directory, exist_ok=True)
+
+    # Очистка всех файлов в корне SHARED_DIR
+    for item in os.listdir(SHARED_DIR):
+        item_path = os.path.join(SHARED_DIR, item)
+        if os.path.isfile(item_path):
+            os.remove(item_path)
+
+    log_message("Все данные и модели удалены.")
     return responses
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
