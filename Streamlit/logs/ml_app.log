@@ -1,0 +1,98 @@
+2024-12-30 13:08:25,433 - INFO - Начато получение EDA
+2024-12-30 13:09:25,037 - INFO - Закончено получение EDA
+2024-12-30 13:11:20,412 - INFO - Начато обучение модели с ID: SVC, метод: SVC, параметры: {'C': 1.0, 'kernel': 'rbf', 'class_weight': 'balanced'}
+2024-12-30 13:11:42,839 - INFO - Обучение модели SVC завершено успешно. Результаты: {'id': 'SVC', 'accuracy': 0.4022222222222222, 'report': {'Bean': {'precision': 0.46153846153846156, 'recall': 0.2, 'f1-score': 0.27906976744186046, 'support': 30.0}, 'Bitter_Gourd': {'precision': 0.56, 'recall': 0.4666666666666667, 'f1-score': 0.509090909090909, 'support': 30.0}, 'Bottle_Gourd': {'precision': 0.6, 'recall': 0.6, 'f1-score': 0.6, 'support': 30.0}, 'Brinjal': {'precision': 0.3333333333333333, 'recall': 0.3, 'f1-score': 0.3157894736842105, 'support': 30.0}, 'Broccoli': {'precision': 0.41025641025641024, 'recall': 0.5333333333333333, 'f1-score': 0.463768115942029, 'support': 30.0}, 'Cabbage': {'precision': 0.2765957446808511, 'recall': 0.43333333333333335, 'f1-score': 0.33766233766233766, 'support': 30.0}, 'Capsicum': {'precision': 0.5263157894736842, 'recall': 0.3333333333333333, 'f1-score': 0.40816326530612246, 'support': 30.0}, 'Carrot': {'precision': 0.3333333333333333, 'recall': 0.4666666666666667, 'f1-score': 0.3888888888888889, 'support': 30.0}, 'Cauliflower': {'precision': 0.35294117647058826, 'recall': 0.4, 'f1-score': 0.375, 'support': 30.0}, 'Cucumber': {'precision': 0.5555555555555556, 'recall': 0.3333333333333333, 'f1-score': 0.4166666666666667, 'support': 30.0}, 'Papaya': {'precision': 0.4583333333333333, 'recall': 0.36666666666666664, 'f1-score': 0.4074074074074074, 'support': 30.0}, 'Potato': {'precision': 0.3333333333333333, 'recall': 0.5666666666666667, 'f1-score': 0.41975308641975306, 'support': 30.0}, 'Pumpkin': {'precision': 0.5, 'recall': 0.36666666666666664, 'f1-score': 0.4230769230769231, 'support': 30.0}, 'Radish': {'precision': 0.3181818181818182, 'recall': 0.23333333333333334, 'f1-score': 0.2692307692307692, 'support': 30.0}, 'Tomato': {'precision': 0.35135135135135137, 'recall': 0.43333333333333335, 'f1-score': 0.3880597014925373, 'support': 30.0}, 'accuracy': 0.4022222222222222, 'macro avg': {'precision': 0.42473797605613695, 'recall': 0.40222222222222215, 'f1-score': 0.400108487487361, 'support': 450.0}, 'weighted avg': {'precision': 0.4247379760561369, 'recall': 0.4022222222222222, 'f1-score': 0.40010848748736094, 'support': 450.0}}}
+2024-12-30 13:17:48,194 - INFO - Начато предсказание для модели SVC
+2024-12-30 13:17:48,547 - INFO - Предсказание для модели SVC успешно: К гадалке не ходи, это... Broccoli
+2024-12-30 13:20:10,412 - INFO - Начато предсказание для модели SVC
+2024-12-30 13:20:10,740 - INFO - Предсказание для модели SVC успешно: Держите меня семеро, это... Broccoli
+2024-12-30 13:20:34,076 - INFO - Начато предсказание для модели SVC
+2024-12-30 13:20:34,397 - INFO - Предсказание для модели SVC успешно: Выглядит как... Papaya
+2024-12-30 13:21:55,324 - INFO - Начато обучение модели с ID: RandomForestClassifier, метод: RandomForestClassifier, параметры: {'n_estimators': 100}
+2024-12-30 13:22:21,733 - INFO - Обучение модели RandomForestClassifier завершено успешно. Результаты: {'id': 'RandomForestClassifier', 'accuracy': 0.48444444444444446, 'report': {'Bean': {'precision': 0.3333333333333333, 'recall': 0.36666666666666664, 'f1-score': 0.3492063492063492, 'support': 30.0}, 'Bitter_Gourd': {'precision': 0.5, 'recall': 0.5, 'f1-score': 0.5, 'support': 30.0}, 'Bottle_Gourd': {'precision': 0.6666666666666666, 'recall': 0.5333333333333333, 'f1-score': 0.5925925925925926, 'support': 30.0}, 'Brinjal': {'precision': 0.46153846153846156, 'recall': 0.2, 'f1-score': 0.27906976744186046, 'support': 30.0}, 'Broccoli': {'precision': 0.5483870967741935, 'recall': 0.5666666666666667, 'f1-score': 0.5573770491803278, 'support': 30.0}, 'Cabbage': {'precision': 0.4, 'recall': 0.4, 'f1-score': 0.4, 'support': 30.0}, 'Capsicum': {'precision': 0.6666666666666666, 'recall': 0.6, 'f1-score': 0.631578947368421, 'support': 30.0}, 'Carrot': {'precision': 0.5833333333333334, 'recall': 0.7, 'f1-score': 0.6363636363636364, 'support': 30.0}, 'Cauliflower': {'precision': 0.42857142857142855, 'recall': 0.4, 'f1-score': 0.41379310344827586, 'support': 30.0}, 'Cucumber': {'precision': 0.6956521739130435, 'recall': 0.5333333333333333, 'f1-score': 0.6037735849056604, 'support': 30.0}, 'Papaya': {'precision': 0.5357142857142857, 'recall': 0.5, 'f1-score': 0.5172413793103449, 'support': 30.0}, 'Potato': {'precision': 0.3404255319148936, 'recall': 0.5333333333333333, 'f1-score': 0.4155844155844156, 'support': 30.0}, 'Pumpkin': {'precision': 0.5517241379310345, 'recall': 0.5333333333333333, 'f1-score': 0.5423728813559322, 'support': 30.0}, 'Radish': {'precision': 0.42857142857142855, 'recall': 0.6, 'f1-score': 0.5, 'support': 30.0}, 'Tomato': {'precision': 0.3103448275862069, 'recall': 0.3, 'f1-score': 0.3050847457627119, 'support': 30.0}, 'accuracy': 0.48444444444444446, 'macro avg': {'precision': 0.49672862483433183, 'recall': 0.4844444444444444, 'f1-score': 0.48293589683470195, 'support': 450.0}, 'weighted avg': {'precision': 0.4967286248343319, 'recall': 0.48444444444444446, 'f1-score': 0.4829358968347019, 'support': 450.0}}}
+2024-12-30 13:29:26,162 - INFO - Начато получение EDA
+2024-12-30 13:30:00,688 - INFO - Закончено получение EDA
+2024-12-30 13:42:09,337 - INFO - Начато получение EDA
+2024-12-30 13:42:50,116 - INFO - Закончено получение EDA
+2024-12-30 13:43:06,707 - INFO - Запрос списка моделей
+2024-12-30 13:43:07,044 - INFO - Список моделей получен: [{'id': 'RandomForestClassifier'}, {'id': 'SVC'}]
+2024-12-30 13:44:13,601 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:44:13,983 - INFO - Предсказание для модели RandomForestClassifier успешно: Держите меня семеро, это... Potato
+2024-12-30 13:45:07,085 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:45:07,467 - INFO - Предсказание для модели RandomForestClassifier успешно: Встречайте!... Tomato
+2024-12-30 13:45:35,851 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:45:36,218 - INFO - Предсказание для модели RandomForestClassifier успешно: К гадалке не ходи, это... Broccoli
+2024-12-30 13:45:50,927 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:45:51,301 - INFO - Предсказание для модели RandomForestClassifier успешно: Тысяча чертей, вот и... Broccoli
+2024-12-30 13:46:23,139 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:46:23,511 - INFO - Предсказание для модели RandomForestClassifier успешно: Встречайте!... Potato
+2024-12-30 13:46:39,772 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:46:40,134 - INFO - Предсказание для модели RandomForestClassifier успешно: Выглядит как... Broccoli
+2024-12-30 13:49:47,514 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:49:47,884 - INFO - Предсказание для модели RandomForestClassifier успешно: Выглядит как... Capsicum
+2024-12-30 13:49:50,556 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:49:50,924 - INFO - Предсказание для модели RandomForestClassifier успешно: Ох ты ж, это же... Capsicum
+2024-12-30 13:50:01,599 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:50:02,075 - INFO - Предсказание для модели RandomForestClassifier успешно: Я думаю это... Pumpkin
+2024-12-30 13:52:01,988 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:52:02,364 - INFO - Предсказание для модели RandomForestClassifier успешно: Ох ты ж, это же... Potato
+2024-12-30 13:52:18,611 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:52:19,001 - INFO - Предсказание для модели RandomForestClassifier успешно: Встречайте!... Bean
+2024-12-30 13:52:27,878 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:52:28,276 - INFO - Предсказание для модели RandomForestClassifier успешно: Тысяча чертей, вот и... Capsicum
+2024-12-30 13:52:35,663 - INFO - Начато предсказание для модели RandomForestClassifier
+2024-12-30 13:52:36,024 - INFO - Предсказание для модели RandomForestClassifier успешно: К гадалке не ходи, это... Potato
+2024-12-30 22:05:41,261 - INFO - Начато предсказание для модели SVC
+2024-12-30 22:05:41,822 - INFO - Предсказание для модели SVC успешно: Ох ты ж, это же... Potato
+2024-12-30 22:07:09,472 - INFO - Начато получение EDA
+2024-12-30 22:07:46,046 - INFO - Закончено получение EDA
+2024-12-30 22:08:05,146 - INFO - Начато получение EDA
+2024-12-30 22:08:55,796 - INFO - Закончено получение EDA
+2024-12-30 22:08:55,799 - INFO - Начато обучение модели с ID: SVC, метод: SVC, параметры: {'C': 1.0, 'kernel': 'rbf', 'class_weight': 'balanced'}
+2024-12-30 22:09:30,124 - INFO - Запрос списка моделей
+2024-12-30 22:09:35,832 - ERROR - Ошибка при получении списка моделей: 
+2024-12-30 22:11:13,479 - INFO - Запрос на удаление всех моделей
+2024-12-30 22:11:17,020 - INFO - Все модели успешно удалены: [{'id': 'RandomForestClassifier'}, {'id': 'SVC'}]
+2024-12-30 22:11:33,020 - INFO - Начато получение EDA
+2024-12-30 22:12:37,251 - INFO - Закончено получение EDA
+2024-12-30 22:12:42,581 - INFO - Начато получение EDA
+2024-12-30 22:13:15,656 - INFO - Закончено получение EDA
+2024-12-30 22:13:15,659 - INFO - Начато обучение модели с ID: SVC, метод: SVC, параметры: {'C': 1.0, 'kernel': 'rbf', 'class_weight': 'balanced'}
+2024-12-30 22:13:53,254 - ERROR - Ошибка при обучении модели SVC: Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/fit'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+2024-12-30 22:14:11,330 - INFO - Начато получение EDA
+2024-12-30 22:14:12,654 - INFO - Начато получение EDA
+2024-12-30 22:15:49,424 - INFO - Закончено получение EDA
+2024-12-30 22:15:49,424 - INFO - Начато обучение модели с ID: SVC, метод: SVC, параметры: {'C': 1.0, 'kernel': 'rbf', 'class_weight': 'balanced'}
+2024-12-30 22:16:26,496 - INFO - Начато получение EDA
+2024-12-30 22:16:39,425 - ERROR - Ошибка при обучении модели SVC: Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/fit'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+2024-12-30 22:16:41,609 - INFO - Начато обучение модели с ID: SVC, метод: SVC, параметры: {'C': 1.0, 'kernel': 'rbf', 'class_weight': 'balanced'}
+2024-12-30 22:17:38,721 - ERROR - Ошибка при обучении модели SVC: 
+2024-12-30 22:17:38,828 - ERROR - Ошибка при получении eda: 
+2024-12-30 22:17:46,879 - INFO - Запрос на удаление всех моделей
+2024-12-30 22:17:49,215 - ERROR - Ошибка при удалении всех моделей: All connection attempts failed
+2024-12-30 22:17:58,866 - INFO - Запрос на удаление всех моделей
+2024-12-30 22:18:01,168 - ERROR - Ошибка при удалении всех моделей: All connection attempts failed
+2024-12-30 22:20:07,811 - INFO - Начато обучение модели с ID: SVC, метод: SVC, параметры: {'C': 1.0, 'kernel': 'rbf', 'class_weight': 'balanced'}
+2024-12-30 22:20:30,851 - INFO - Обучение модели SVC завершено успешно. Результаты: {'id': 'SVC', 'accuracy': 0.3888888888888889, 'report': {'Bean': {'precision': 0.29411764705882354, 'recall': 0.16666666666666666, 'f1-score': 0.2127659574468085, 'support': 30.0}, 'Bitter_Gourd': {'precision': 0.36, 'recall': 0.3, 'f1-score': 0.32727272727272727, 'support': 30.0}, 'Bottle_Gourd': {'precision': 0.6153846153846154, 'recall': 0.5333333333333333, 'f1-score': 0.5714285714285714, 'support': 30.0}, 'Brinjal': {'precision': 0.3023255813953488, 'recall': 0.43333333333333335, 'f1-score': 0.3561643835616438, 'support': 30.0}, 'Broccoli': {'precision': 0.3939393939393939, 'recall': 0.43333333333333335, 'f1-score': 0.4126984126984127, 'support': 30.0}, 'Cabbage': {'precision': 0.18, 'recall': 0.3, 'f1-score': 0.225, 'support': 30.0}, 'Capsicum': {'precision': 0.4117647058823529, 'recall': 0.4666666666666667, 'f1-score': 0.4375, 'support': 30.0}, 'Carrot': {'precision': 0.39285714285714285, 'recall': 0.36666666666666664, 'f1-score': 0.3793103448275862, 'support': 30.0}, 'Cauliflower': {'precision': 0.4444444444444444, 'recall': 0.4, 'f1-score': 0.42105263157894735, 'support': 30.0}, 'Cucumber': {'precision': 0.5909090909090909, 'recall': 0.43333333333333335, 'f1-score': 0.5, 'support': 30.0}, 'Papaya': {'precision': 0.6666666666666666, 'recall': 0.3333333333333333, 'f1-score': 0.4444444444444444, 'support': 30.0}, 'Potato': {'precision': 0.42, 'recall': 0.7, 'f1-score': 0.525, 'support': 30.0}, 'Pumpkin': {'precision': 0.2727272727272727, 'recall': 0.3, 'f1-score': 0.2857142857142857, 'support': 30.0}, 'Radish': {'precision': 0.4782608695652174, 'recall': 0.36666666666666664, 'f1-score': 0.41509433962264153, 'support': 30.0}, 'Tomato': {'precision': 0.375, 'recall': 0.3, 'f1-score': 0.3333333333333333, 'support': 30.0}, 'accuracy': 0.3888888888888889, 'macro avg': {'precision': 0.41322649538869133, 'recall': 0.3888888888888888, 'f1-score': 0.38978529546196017, 'support': 450.0}, 'weighted avg': {'precision': 0.41322649538869133, 'recall': 0.3888888888888889, 'f1-score': 0.38978529546196017, 'support': 450.0}}}
+2024-12-30 22:21:03,620 - INFO - Запрос на удаление всех моделей
+2024-12-30 22:21:09,716 - INFO - Все модели успешно удалены: [{'id': 'SVC'}]
+2024-12-30 22:24:05,285 - INFO - Начато получение EDA
+2024-12-30 22:24:42,752 - INFO - Закончено получение EDA
+2024-12-30 22:25:17,186 - INFO - Начато получение EDA
+2024-12-30 22:25:51,360 - INFO - Закончено получение EDA
+2024-12-30 22:25:51,363 - INFO - Начато обучение модели с ID: SVC, метод: SVC, параметры: {'C': 1.0, 'kernel': 'rbf', 'class_weight': 'balanced'}
+2024-12-30 22:26:20,493 - ERROR - Ошибка при обучении модели SVC: Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/fit'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+2024-12-30 22:27:01,337 - INFO - Запрос на удаление всех моделей
+2024-12-30 22:27:01,676 - ERROR - Ошибка при удалении всех моделей: Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/remove_all'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+2024-12-30 22:27:26,069 - INFO - Начато обучение модели с ID: SVC, метод: SVC, параметры: {'C': 1.0, 'kernel': 'rbf', 'class_weight': 'balanced'}
+2024-12-30 22:27:47,411 - ERROR - Ошибка при обучении модели SVC: Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/fit'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+2024-12-30 22:30:29,437 - INFO - Начато обучение модели с ID: SVC, метод: SVC, параметры: {'C': 1.0, 'kernel': 'rbf', 'class_weight': 'balanced'}
+2024-12-30 22:30:56,938 - ERROR - Ошибка при обучении модели SVC: Server error '500 Internal Server Error' for url 'http://127.0.0.1:8000/fit'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/500
+2024-12-30 22:34:40,425 - INFO - Начато обучение модели с ID: SVC, метод: SVC, параметры: {'C': 1.0, 'kernel': 'rbf', 'class_weight': 'balanced'}
+2024-12-30 22:35:05,593 - INFO - Обучение модели SVC завершено успешно. Результаты: {'id': 'SVC', 'accuracy': 0.4622222222222222, 'report': {'Bean': {'precision': 0.5555555555555556, 'recall': 0.3333333333333333, 'f1-score': 0.4166666666666667, 'support': 30.0}, 'Bitter_Gourd': {'precision': 0.4827586206896552, 'recall': 0.4666666666666667, 'f1-score': 0.4745762711864407, 'support': 30.0}, 'Bottle_Gourd': {'precision': 0.7272727272727273, 'recall': 0.5333333333333333, 'f1-score': 0.6153846153846154, 'support': 30.0}, 'Brinjal': {'precision': 0.5172413793103449, 'recall': 0.5, 'f1-score': 0.5084745762711864, 'support': 30.0}, 'Broccoli': {'precision': 0.26, 'recall': 0.43333333333333335, 'f1-score': 0.325, 'support': 30.0}, 'Cabbage': {'precision': 0.45454545454545453, 'recall': 0.5, 'f1-score': 0.47619047619047616, 'support': 30.0}, 'Capsicum': {'precision': 0.43333333333333335, 'recall': 0.43333333333333335, 'f1-score': 0.43333333333333335, 'support': 30.0}, 'Carrot': {'precision': 0.5, 'recall': 0.6333333333333333, 'f1-score': 0.5588235294117647, 'support': 30.0}, 'Cauliflower': {'precision': 0.4642857142857143, 'recall': 0.43333333333333335, 'f1-score': 0.4482758620689655, 'support': 30.0}, 'Cucumber': {'precision': 0.7333333333333333, 'recall': 0.36666666666666664, 'f1-score': 0.4888888888888889, 'support': 30.0}, 'Papaya': {'precision': 0.5925925925925926, 'recall': 0.5333333333333333, 'f1-score': 0.5614035087719298, 'support': 30.0}, 'Potato': {'precision': 0.4878048780487805, 'recall': 0.6666666666666666, 'f1-score': 0.5633802816901409, 'support': 30.0}, 'Pumpkin': {'precision': 0.29411764705882354, 'recall': 0.3333333333333333, 'f1-score': 0.3125, 'support': 30.0}, 'Radish': {'precision': 0.5454545454545454, 'recall': 0.4, 'f1-score': 0.46153846153846156, 'support': 30.0}, 'Tomato': {'precision': 0.3235294117647059, 'recall': 0.36666666666666664, 'f1-score': 0.34375, 'support': 30.0}, 'accuracy': 0.4622222222222222, 'macro avg': {'precision': 0.4914550128830377, 'recall': 0.4622222222222222, 'f1-score': 0.4658790980935247, 'support': 450.0}, 'weighted avg': {'precision': 0.4914550128830378, 'recall': 0.4622222222222222, 'f1-score': 0.4658790980935246, 'support': 450.0}}}
