@@ -5,8 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="57f493a2-f9a2-4b15-b7ea-649ba272142e" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/FastAPI/logs/ml_app.log" beforeDir="false" afterPath="$PROJECT_DIR$/FastAPI/logs/ml_app.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Streamlit/logs/ml_app.log" beforeDir="false" afterPath="$PROJECT_DIR$/Streamlit/logs/ml_app.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -41,7 +40,7 @@
     &quot;ASKED_SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
     &quot;Python.main.executor&quot;: &quot;Run&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;dev__sidorov__fastapi&quot;,
     &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;
   }
 }</component>
