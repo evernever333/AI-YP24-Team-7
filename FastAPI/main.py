@@ -35,57 +35,38 @@ class ModelData(BaseModel):
 class Model(BaseModel):
     id: str
 
-# Базовая директория, где будет все храниться
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
 PARENT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 SHARED_DIR = os.path.join(PARENT_DIR, "shared")
 LOGS_DIR = os.path.join(CURRENT_DIR, "logs")
 
-# Создание папок, если они отсутствуют
+datasets_dir = os.path.join(SHARED_DIR, "datasets")
+models_dir = os.path.join(SHARED_DIR, "models")
+temp_predict_dir = os.path.join(SHARED_DIR, "temp_predict")
+
 os.makedirs(SHARED_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
+os.makedirs(datasets_dir, exist_ok=True)
+os.makedirs(models_dir, exist_ok=True)
+os.makedirs(temp_predict_dir, exist_ok=True)
 
-# Настройка логгера
 logger = logging.getLogger("ml_app")
 if not logger.hasHandlers():
     logger.setLevel(logging.INFO)
     handler = TimedRotatingFileHandler(
         filename=os.path.join(LOGS_DIR, "ml_app.log"),
-        when="midnight",  # Ротация логов каждую ночь
+        when="midnight",
         interval=1,
-        backupCount=7,  # Храним логи за последние 7 дней
+        backupCount=7,
         encoding="utf-8",
     )
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-BASE_DIR = SHARED_DIR
-
-# Переименуем папку dataset в datasets
-datasets_dir = os.path.join(BASE_DIR, "datasets")
-os.makedirs(datasets_dir, exist_ok=True)
-
-# Папка для моделей
-models_dir = os.path.join(BASE_DIR, "models")
-os.makedirs(models_dir, exist_ok=True)
-
-# Папка для временных файлов
-temp_predict_dir = os.path.join(BASE_DIR, "temp_predict")
-os.makedirs(temp_predict_dir, exist_ok=True)
-
 def load_images_and_labels(base_dir: str, category: str, sample_percentage: float = 0.15) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Загрузка изображений и меток из указанной категории, игнорируя промежуточные папки.
-    :param base_dir: Базовая директория, содержащая папки с изображениями.
-    :param category: Категория ("train", "test", "validation").
-    :param sample_percentage: Процент выборки изображений для загрузки.
-    :return: кортеж из массива изображений и соответствующих им меток.
-    """
-    images: List[np.ndarray] = []
-    labels: List[str] = []
+    images, labels = [], []
 
-    # Ищем папку категории на любом уровне вложенности
     for root, _, _ in os.walk(base_dir):
         if os.path.basename(root) == category:
             for class_name in os.listdir(root):
@@ -102,7 +83,7 @@ def load_images_and_labels(base_dir: str, category: str, sample_percentage: floa
                         img = cv2.resize(img, (64, 64))
                         images.append(img.flatten())
                         labels.append(class_name)
-            break  # Останавливаем поиск, если нужная папка найдена
+            break
 
     if not images or not labels:
         raise ValueError(f"Категория {category} пуста или содержит некорректные данные.")
@@ -110,11 +91,6 @@ def load_images_and_labels(base_dir: str, category: str, sample_percentage: floa
     return np.array(images), np.array(labels)
 
 def get_model_from_client(model_data: Dict) -> Union[SVC, LogisticRegression, RandomForestClassifier]:
-    """
-    Создание классификатора на основе данных, полученных от клиента.
-    :param model_data: Словарь с именем модели и её параметрами.
-    :return: Объект классификатора.
-    """
     model_name = model_data.get("model")
     if not model_name:
         raise ValueError("Модель не указана.")
@@ -129,81 +105,126 @@ def get_model_from_client(model_data: Dict) -> Union[SVC, LogisticRegression, Ra
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 
+@app.post("/eda")
+async def eda(
+        file: UploadFile = File(...),
+) -> Dict:
+    try:
+        logger.info("Начали выполнение EDA")
+
+        if os.listdir(datasets_dir):
+            shutil.rmtree(datasets_dir)
+            os.makedirs(datasets_dir, exist_ok=True)
+
+        zip_path = os.path.join(SHARED_DIR, file.filename)
+        with open(zip_path, "wb") as buffer:
+            buffer.write(await file.read())
+
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(datasets_dir)
+
+        train_images, train_labels = load_images_and_labels(datasets_dir, "train", sample_percentage=0.15)
+        test_images, test_labels = load_images_and_labels(datasets_dir, "test", sample_percentage=0.15)
+
+        train_counter = Counter(train_labels)
+        test_counter = Counter(test_labels)
+
+        fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+        ax[0].bar(train_counter.keys(), train_counter.values(), color='skyblue')
+        ax[0].set_title("Train Class Distribution")
+        ax[0].set_xticks(list(range(len(train_counter.keys()))))
+        ax[0].set_xticklabels(train_counter.keys(), rotation=45)
+
+        ax[1].bar(test_counter.keys(), test_counter.values(), color='salmon')
+        ax[1].set_title("Test Class Distribution")
+        ax[1].set_xticks(list(range(len(test_counter.keys()))))
+        ax[1].set_xticklabels(test_counter.keys(), rotation=45)
+
+        plt.tight_layout()
+
+        buffer = BytesIO()
+        plt.savefig(buffer, format="png")
+        buffer.seek(0)
+        encoded_img = base64.b64encode(buffer.read()).decode("utf-8")
+        plt.close()
+
+        logger.info("EDA завершено успешно")
+
+        # Сохраняем результаты для дальнейшего использования в обучении
+        np.save(os.path.join(datasets_dir, "train_images.npy"), train_images)
+        np.save(os.path.join(datasets_dir, "train_labels.npy"), train_labels)
+        np.save(os.path.join(datasets_dir, "test_images.npy"), test_images)
+        np.save(os.path.join(datasets_dir, "test_labels.npy"), test_labels)
+
+        return {
+            "message": "EDA выполнен успешно!",
+            "train_class_dist": dict(train_counter),
+            "test_class_dist": dict(test_counter),
+            "image": f"data:image/png;base64,{encoded_img}"
+        }
+
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении EDA: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/fit")
 async def fit(
-        file: UploadFile = File(...),
         model_data: str = Form(...),
 ) -> Dict:
-    """
-    Эндпоинт для тренировки модели на загруженном наборе данных.
-    :param file: Архив с данными для тренировки.
-    :param model_data: JSON с описанием модели и её параметров.
-    :return: Словарь с результатами тренировки.
-    """
     try:
-        # Проверка входных данных
-        if not file.filename.endswith(".zip"):
-            raise HTTPException(status_code=400, detail="Файл должен быть в формате .zip")
+        # Проверяем, что результаты EDA существуют
+        train_images_path = os.path.join(datasets_dir, "train_images.npy")
+        train_labels_path = os.path.join(datasets_dir, "train_labels.npy")
+        test_images_path = os.path.join(datasets_dir, "test_images.npy")
+        test_labels_path = os.path.join(datasets_dir, "test_labels.npy")
 
-        # Валидация JSON данных модели
+        if not all(os.path.exists(path) for path in [train_images_path, train_labels_path, test_images_path, test_labels_path]):
+            raise HTTPException(status_code=400, detail="Данные не подготовлены. Выполните шаг EDA перед обучением.")
+
+        # Загружаем данные
+        train_images = np.load(train_images_path)
+        train_labels = np.load(train_labels_path)
+        test_images = np.load(test_images_path)
+        test_labels = np.load(test_labels_path)
+
         try:
             model_data = json.loads(model_data)
             validated_model_data = ModelData(**model_data)
         except (json.JSONDecodeError, ValidationError) as e:
             raise HTTPException(status_code=400, detail=f"Ошибка валидации JSON: {e}")
 
-        # 1. Распаковываем архив в общую папку
-        dataset_dir = datasets_dir
-        zip_path = os.path.join(BASE_DIR, file.filename)
-        with open(zip_path, "wb") as buffer:
-            buffer.write(await file.read())
-
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(dataset_dir)
-
-        # 2. Загружаем данные
-        train_images, train_labels = load_images_and_labels(dataset_dir, "train", sample_percentage=0.15)
-        test_images, test_labels = load_images_and_labels(dataset_dir, "test", sample_percentage=0.15)
-
-        # 3. Применяем PCA
         pca = PCA(n_components=150, svd_solver='randomized', whiten=True, random_state=42)
         reduced_train_images = pca.fit_transform(train_images)
         reduced_test_images = pca.transform(test_images)
 
-        # 4. Создаем модель на основе данных клиента
         try:
             classifier = get_model_from_client(validated_model_data.dict())
         except Exception:
             raise HTTPException(status_code=400, detail="Некорректный формат модели.")
 
-        logger.info(f"Начали обучение")
-
-        # 5. Обучаем модель
+        logger.info("Начали обучение модели")
         classifier.fit(reduced_train_images, train_labels)
 
-        # 6. Предсказываем и оцениваем
         y_pred = classifier.predict(reduced_test_images)
         accuracy = accuracy_score(test_labels, y_pred)
 
-        # 7. Создаем отчет об обучении
         report = classification_report(test_labels, y_pred, output_dict=True)
 
-        # 8. Сохраняем модель
         model_id = validated_model_data.model_id
         model_path = os.path.join(models_dir, f"{model_id}.joblib")
         dump((classifier, pca), model_path)
 
-        # Логируем успешное обучение
         logger.info(f"Модель {model_id} успешно обучена с точностью {accuracy}.")
-
         return {
             "id": model_id,
             "accuracy": accuracy,
             "report": report
-            }
+        }
+
     except Exception as e:
-        logger.info(f"Ошибка при обучении модели: {e}")
+        logger.error(f"Ошибка при обучении модели: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/predict")
 async def predict(
@@ -298,70 +319,6 @@ async def remove_all() -> List[Model]:
     os.mkdir(models_path)
     logger.info("Все данные и модели удалены.")
     return models
-
-@app.post("/eda")
-async def eda(
-        file: UploadFile = File(...),
-) -> Dict:
-    """
-    Анализ Exploratory Data Analysis (EDA) на основе загруженного архива изображений.
-    """
-    try:
-        logger.info("Начали получение EDA")
-        # 1. Сохраняем zip-файл и распаковываем
-        zip_path = os.path.join(BASE_DIR, file.filename)
-        with open(zip_path, "wb") as buffer:
-            buffer.write(await file.read())
-
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(datasets_dir)
-
-        # 2. Загружаем изображения из train и test
-        train_images, train_labels = load_images_and_labels(datasets_dir, "train", sample_percentage=1.0)
-        test_images, test_labels = load_images_and_labels(datasets_dir, "test", sample_percentage=1.0)
-
-        # 3. Анализ распределения классов
-        train_counter = Counter(train_labels)
-        test_counter = Counter(test_labels)
-
-        fig, ax = plt.subplots(1, 2, figsize=(12, 5))
-        ax[0].bar(train_counter.keys(), train_counter.values(), color='skyblue')
-        ax[0].set_title("Train Class Distribution")
-        ax[0].set_xticks(list(range(len(train_counter.keys()))))
-        ax[0].set_xticklabels(train_counter.keys(), rotation=45)
-
-        ax[1].bar(test_counter.keys(), test_counter.values(), color='salmon')
-        ax[1].set_title("Test Class Distribution")
-        ax[1].set_xticks(list(range(len(test_counter.keys()))))
-        ax[1].set_xticklabels(test_counter.keys(), rotation=45)
-
-        plt.tight_layout()
-
-        # 4. Пример изображений (первые 5)
-        fig2, axs = plt.subplots(1, 5, figsize=(15, 5))
-        for i in range(5):
-            axs[i].imshow(train_images[i].reshape(64, 64), cmap='gray')
-            axs[i].set_title(train_labels[i])
-            axs[i].axis('off')
-        plt.suptitle("Sample Images", fontsize=16)
-
-        # 5. Преобразуем графики в base64 для отправки
-        buffer = BytesIO()
-        plt.savefig(buffer, format="png")
-        buffer.seek(0)
-        encoded_img = base64.b64encode(buffer.read()).decode("utf-8")
-        plt.close()
-        logger.info("Получение EDA закончено")
-        return {
-            "message": "EDA выполнен успешно!",
-            "train_class_dist": dict(train_counter),
-            "test_class_dist": dict(test_counter),
-            "image": f"data:image/png;base64,{encoded_img}"
-        }
-
-    except Exception as e:
-        logger.error(f"Ошибка при EDA: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
