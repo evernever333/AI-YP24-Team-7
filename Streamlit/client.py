@@ -104,7 +104,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-BASE_URL = "http://0.0.0.0:8000"
+BASE_URL = "http://127.0.0.1:8000"
 
 # Заголовок
 st.title("✨ Slaaaay ML App 💅")
