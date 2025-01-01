@@ -38,42 +38,72 @@ def highlight(val):
 async def eda(file):
     """Обучение модели."""
     async with httpx.AsyncClient(timeout=1000) as client:
-        response = await client.post(f"{BASE_URL}/eda", files={"file": (file.name, file.getvalue(), file.type)})
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = await client.post(f"{BASE_URL}/eda", files={"file": (file.name, file.getvalue(), file.type)})
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            error_detail = e.response.json().get("detail", "Ошибка на сервере")
+            raise RuntimeError(f"HTTP {e.response.status_code}: {error_detail}")
+        except Exception as e:
+            raise RuntimeError(f"Неизвестная ошибка: {str(e)}")
 
 # обучение модели
-async def train_model(file, config):
+async def train_model(config):
     """Обучение модели."""
     async with httpx.AsyncClient(timeout=1000) as client:
-        response = await client.post(f"{BASE_URL}/fit", files={"file": (file.name, file.getvalue(), file.type)}, data={"model_data": config})
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = await client.post(f"{BASE_URL}/fit", data={"model_data": config})
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            error_detail = e.response.json().get("detail", "Ошибка на сервере")
+            raise RuntimeError(f"HTTP {e.response.status_code}: {error_detail}")
+        except Exception as e:
+            raise RuntimeError(f"Неизвестная ошибка: {str(e)}")
 
 
 # предсказание модели
 async def prediction(file, model_id):
     """Предсказание модели."""
     async with httpx.AsyncClient(timeout=1000) as client:
-        response = await client.post(f"{BASE_URL}/predict", files={"file": (file.name, file.getvalue(), file.type)}, data={"model_id": model_id})
-        response.raise_for_status()
-        return response.json()
-
+        try:
+            response = await client.post(f"{BASE_URL}/predict", files={"file": (file.name, file.getvalue(), file.type)}, data={"model_id": model_id})
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            error_detail = e.response.json().get("detail", "Ошибка на сервере")
+            raise RuntimeError(f"HTTP {e.response.status_code}: {error_detail}")
+        except Exception as e:
+            raise RuntimeError(f"Неизвестная ошибка: {str(e)}")
+        
 # список моделей
 async def list_models():
     """Получение списка моделей."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/list_models")
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = await client.get(f"{BASE_URL}/list_models")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            error_detail = e.response.json().get("detail", "Ошибка на сервере")
+            raise RuntimeError(f"HTTP {e.response.status_code}: {error_detail}")
+        except Exception as e:
+            raise RuntimeError(f"Неизвестная ошибка: {str(e)}")
 
 # удаление всех моделей
 async def remove_all_models():
     """Удаление всех моделей."""
     async with httpx.AsyncClient(timeout=1000) as client:
-        response = await client.delete(f"{BASE_URL}/remove_all")
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = await client.delete(f"{BASE_URL}/remove_all")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            error_detail = e.response.json().get("detail", "Ошибка на сервере")
+            raise RuntimeError(f"HTTP {e.response.status_code}: {error_detail}")
+        except Exception as e:
+            raise RuntimeError(f"Неизвестная ошибка: {str(e)}")
 
 # Интерфейс Streamlit
 st.markdown(
@@ -104,7 +134,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-BASE_URL = "http://0.0.0.0:8000"
+BASE_URL = "http://127.0.0.1:8000"
 
 # Заголовок
 st.title("✨ Slaaaay ML App 💅")
@@ -112,55 +142,58 @@ st.subheader("Сделай их жизнь ярче с предсказания�
 
 st.sidebar.title("🎨 Навигация")
 st.sidebar.write("Выбери раздел, bae 🌈")
-page = st.sidebar.radio(" ", ["Обучение", "Предсказание", "Список моделей", "Удаление моделей"])
+page = st.sidebar.radio(" ", ["EDA", "Обучение", "Предсказание", "Список моделей", "Удаление моделей"])
 
-if page == "Обучение":
-    st.header("👑 Обучение ML-модели")
+if page == "EDA":
+    st.header("📊 EDA ML-модели")
     st.write("Загрузи свой датасетик, милашка 😘")
 
     # Загрузка файла
     file = st.file_uploader("Выбери файл", type=["zip"])
+
+    if st.button("💃 Начать получение EDA", disabled = file is None):
+        with st.spinner("✨ Получение EDA..."):
+            container = st.empty()
+            try:
+                logger.info(f"Начато получение EDA")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                results = loop.run_until_complete(eda(file))
+                st.success(results["message"])
+                st.markdown("### 🚂 Распределение классов в Train:")
+                train_class_dist = results["train_class_dist"]
+                train_df = pd.DataFrame(
+                    list(train_class_dist.items()), 
+                    columns=["Класс", "Количество"]
+                )
+                train_df.index += 1  # Начинаем индексацию с 1
+                st.dataframe(train_df)
+
+                st.markdown("### 🧪 Распределение классов в Test:")
+                test_class_dist = results["test_class_dist"]
+                test_df = pd.DataFrame(
+                    list(test_class_dist.items()), 
+                    columns=["Класс", "Количество"]
+                )
+                test_df.index += 1  # Начинаем индексацию с 1
+                st.dataframe(test_df)
+                
+                st.markdown("### 🖼️ Визуализация результата:")
+                st.image(results["anomaly_image"], caption="✨ Результат EDA", use_container_width=True)
+
+                logger.info(f"Закончено получение EDA")
+            except Exception as e:
+                logger.error(f"Ошибка при получении eda: {str(e)}")
+                container.error(f"⚠️ Ошибка: {str(e)}")
+
+if page == "Обучение":
+    st.header("👑 Обучение ML-модели")
 
     # Выбор метода обучения
     method = st.radio(
         "Выбери метод:",
         ["SVC🕶", "LogisticRegression🌸", "RandomForestClassifier👛"],
     )
-
-    if st.checkbox("🚀 Показать EDA", disabled=file is None):
-        container = st.empty()
-        try:
-            st.title("✨ EDA для твоего датасетика 📊")
-            logger.info(f"Начато получение EDA")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            results = loop.run_until_complete(eda(file))
-            st.success(results["message"])
-            st.markdown("### 🚂 Распределение классов в Train:")
-            train_class_dist = results["train_class_dist"]
-            train_df = pd.DataFrame(
-                list(train_class_dist.items()), 
-                columns=["Класс", "Количество"]
-            )
-            train_df.index += 1  # Начинаем индексацию с 1
-            st.dataframe(train_df)
-
-            st.markdown("### 🧪 Распределение классов в Test:")
-            test_class_dist = results["test_class_dist"]
-            test_df = pd.DataFrame(
-                list(test_class_dist.items()), 
-                columns=["Класс", "Количество"]
-            )
-            test_df.index += 1  # Начинаем индексацию с 1
-            st.dataframe(test_df)
-            
-            st.markdown("### 🖼️ Визуализация результата:")
-            st.image(results["image"], caption="✨ Результат EDA", use_container_width=True)
-
-            logger.info(f"Закончено получение EDA")
-        except Exception as e:
-            logger.error(f"Ошибка при получении eda: {str(e)}")
-            container.error(f"⚠️ Ошибка: {str(e)}")
 
     # Настройка параметров модели
     params = {}
@@ -180,43 +213,44 @@ if page == "Обучение":
     st.write("Напиши своё имя и я назову модель в честь тебя 💋")
     model_id = st.text_input("ID модели", value=f"{method[:-1]}")
 
-    if st.button("💃 Начать обучение модели", disabled=(file is None or not model_id)):
-        container = st.empty()
-        try:
-            config = json.dumps({
-                "model": method[:-1],
-                "params": params,
-                "model_id": model_id,
-            })
-            logger.info(f"Начато обучение модели с ID: {model_id}, метод: {method[:-1]}, параметры: {params}")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            results = loop.run_until_complete(train_model(file, config))
-            container.success("✅ Обучение завершено!")
-            st.markdown(
-                f"""
-                ### 🌟 Результаты обучения:
-                - **ID модели:** `{results['id']}`
-                - **Точность:** `{results['accuracy']:.2%}`
-                """
-            )
-            df = pd.DataFrame(results['report']).T.reset_index()
-            df = df.rename(columns={'index': 'Class'})
-            st.title("💅 Slaaaay Таблица Результатов")
-            st.write("Взгляни на эту красотку таблицу ✨")
-            st.dataframe(
-                df.style.applymap(highlight, subset=['precision', 'recall', 'f1-score'])
-            )
-            st.subheader("🎨 Визуализация")
+    if st.button("💃 Начать обучение модели", disabled = not model_id):
+        with st.spinner("✨ Обучение модели..."):
+            container = st.empty()
+            try:
+                config = json.dumps({
+                    "model": method[:-1],
+                    "params": params,
+                    "model_id": model_id,
+                })
+                logger.info(f"Начато обучение модели с ID: {model_id}, метод: {method[:-1]}, параметры: {params}")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                results = loop.run_until_complete(train_model(config))
+                container.success("✅ Обучение завершено!")
+                st.markdown(
+                    f"""
+                    ### 🌟 Результаты обучения:
+                    - **ID модели:** `{results['id']}`
+                    - **Точность:** `{results['accuracy']:.2%}`
+                    """
+                )
+                df = pd.DataFrame(results['report']).T.reset_index()
+                df = df.rename(columns={'index': 'Class'})
+                st.title("💅 Slaaaay Таблица Результатов")
+                st.write("Взгляни на эту красотку таблицу ✨")
+                st.dataframe(
+                    df.style.applymap(highlight, subset=['precision', 'recall', 'f1-score'])
+                )
+                st.subheader("🎨 Визуализация")
 
-            for metric in ['precision', 'recall', 'f1-score']:
-                fig = px.pie(df[:-2], values=metric, names='Class', title=f"{metric.title()} Распределение 💖")
-                fig.update_traces(textinfo='percent+label', pull=[0.05]*len(df))
-                st.plotly_chart(fig)
-            logger.info(f"Обучение модели {model_id} завершено успешно. Результаты: {results}")
-        except Exception as e:
-            logger.error(f"Ошибка при обучении модели {model_id}: {str(e)}")
-            container.error(f"⚠️ Ошибка: {str(e)}")
+                for metric in ['precision', 'recall', 'f1-score']:
+                    fig = px.pie(df[:-2], values=metric, names='Class', title=f"{metric.title()} Распределение 💖")
+                    fig.update_traces(textinfo='percent+label', pull=[0.05]*len(df))
+                    st.plotly_chart(fig)
+                logger.info(f"Обучение модели {model_id} завершено успешно. Результаты: {results}")
+            except Exception as e:
+                logger.error(f"Ошибка при обучении модели {model_id}: {str(e)}")
+                container.error(f"⚠️ Ошибка: {str(e)}")
 
 
 elif page == "Предсказание":
@@ -233,20 +267,21 @@ elif page == "Предсказание":
     st.write("Напиши имя модели 💋")
     model_id = st.text_input("ID модели", value="SVC")
     if st.button("💃 Начать магичить", disabled=(file is None or not model_id)):
-        container = st.empty()
-        try:
-            logger.info(f"Начато предсказание для модели {model_id}")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            results = loop.run_until_complete(prediction(file, model_id))
-            phrase = results.get("phrase", "Магия в деле, bae!")
-            prediction = results.get("prediction", "🤷‍♀️ Неизвестно")
-            container.success("✅ Предсказания получены!")
-            st.markdown(f"### {phrase} **{prediction}** 💫")
-            logger.info(f"Предсказание для модели {model_id} успешно: {phrase} {prediction}")
-        except Exception as e:
-            logger.error(f"Ошибка при предсказании для модели {model_id}: {str(e)}")
-            container.error(f"⚠️ Ошибка: {str(e)}")
+        with st.spinner("🔮 Выполнение предсказаний..."):
+            container = st.empty()
+            try:
+                logger.info(f"Начато предсказание для модели {model_id}")
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                results = loop.run_until_complete(prediction(file, model_id))
+                phrase = results.get("phrase", "Магия в деле, bae!")
+                prediction = results.get("prediction", "🤷‍♀️ Неизвестно")
+                container.success("✅ Предсказания получены!")
+                st.markdown(f"### {phrase} **{prediction}** 💫")
+                logger.info(f"Предсказание для модели {model_id} успешно: {phrase} {prediction}")
+            except Exception as e:
+                logger.error(f"Ошибка при предсказании для модели {model_id}: {str(e)}")
+                container.error(f"⚠️ Ошибка: {str(e)}")
 
 elif page == "Список моделей":
     st.header("📂 Список моделей")
