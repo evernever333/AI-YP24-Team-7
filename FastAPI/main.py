@@ -35,7 +35,6 @@ class ModelData(BaseModel):
     params: Dict = Field(default_factory=dict, description="Параметры для модели.")
     model_id: str = Field(..., description="Уникальный идентификатор для сохранения модели.")
 
-
 # Модель для представления информации о сохраненной модели
 class Model(BaseModel):
     id: str
@@ -116,6 +115,47 @@ def get_model_from_client(model_data: Dict) -> Union[SVC, LogisticRegression, Ra
     else:
         raise ValueError(f"Неизвестная модель: {model_name}")
 
+# Функция для анализа аномалий по классам
+def analyze_anomalies_by_class(images: np.ndarray, labels: np.ndarray) -> plt.Figure:
+    unique_classes = np.unique(labels)
+    mean_brightness_by_class = {}
+    std_brightness_by_class = {}
+
+    for cls in unique_classes:
+        class_images = images[labels == cls]
+        mean_brightness_by_class[cls] = np.mean(class_images, axis=1)
+        std_brightness_by_class[cls] = np.std(class_images, axis=1)
+
+    num_classes = len(unique_classes)
+    fig_height = max(5, num_classes)
+    fig, axes = plt.subplots(2, 1, figsize=(12, fig_height))
+
+    axes[0].boxplot(
+        [mean_brightness_by_class[cls] for cls in unique_classes],
+        labels=unique_classes,
+        patch_artist=True
+    )
+    axes[0].set_title("Средняя яркость по классам")
+    axes[0].set_xlabel("Класс")
+    axes[0].set_ylabel("Средняя яркость")
+    #axes[0].tick_params(axis='x', rotation=45)
+
+    axes[1].boxplot(
+        [std_brightness_by_class[cls] for cls in unique_classes],
+        labels=unique_classes,
+        patch_artist=True
+    )
+    axes[1].set_title("Стандартное отклонение яркости по классам")
+    axes[1].set_xlabel("Класс")
+    axes[1].set_ylabel("Стандартное отклонение яркости")
+    #axes[1].tick_params(axis='x', rotation=45)
+
+    # Разносим графики, чтобы надписи не накладывались
+    plt.subplots_adjust(hspace=1)
+
+    plt.tight_layout()
+    return fig
+
 @app.post("/eda")
 async def eda(
         file: UploadFile = File(...),
@@ -147,20 +187,11 @@ async def eda(
         test_counter = Counter(test_labels)
 
         # Функция для анализа аномалий в изображениях
-        def analyze_anomalies(images):
-            mean_brightness = np.mean(images, axis=1)
-            std_brightness = np.std(images, axis=1)
+        anomaly_fig = analyze_anomalies_by_class(train_images, train_labels)
 
-            fig, ax = plt.subplots(1, 2, figsize=(12, 5))
-            ax[0].boxplot(mean_brightness)
-            ax[0].set_title("Mean Brightness")
+        # Показываем график на экране
+        plt.show()
 
-            ax[1].boxplot(std_brightness)
-            ax[1].set_title("Brightness Standard Deviation")
-
-            return fig
-
-        anomaly_fig = analyze_anomalies(train_images)
         anomaly_buffer = BytesIO()
         anomaly_fig.savefig(anomaly_buffer, format="png")
         anomaly_buffer.seek(0)
