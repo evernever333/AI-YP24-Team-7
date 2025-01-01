@@ -138,7 +138,7 @@ def analyze_anomalies_by_class(images: np.ndarray, labels: np.ndarray) -> plt.Fi
     axes[0].set_title("Средняя яркость по классам")
     axes[0].set_xlabel("Класс")
     axes[0].set_ylabel("Средняя яркость")
-    #axes[0].tick_params(axis='x', rotation=45)
+    axes[0].tick_params(axis='x', rotation=45)
 
     axes[1].boxplot(
         [std_brightness_by_class[cls] for cls in unique_classes],
@@ -148,10 +148,10 @@ def analyze_anomalies_by_class(images: np.ndarray, labels: np.ndarray) -> plt.Fi
     axes[1].set_title("Стандартное отклонение яркости по классам")
     axes[1].set_xlabel("Класс")
     axes[1].set_ylabel("Стандартное отклонение яркости")
-    #axes[1].tick_params(axis='x', rotation=45)
+    axes[1].tick_params(axis='x', rotation=45)
 
     # Разносим графики, чтобы надписи не накладывались
-    plt.subplots_adjust(hspace=1)
+    plt.subplots_adjust(hspace=5.0)
 
     plt.tight_layout()
     return fig
@@ -189,14 +189,10 @@ async def eda(
         # Функция для анализа аномалий в изображениях
         anomaly_fig = analyze_anomalies_by_class(train_images, train_labels)
 
-        # Показываем график на экране
-        plt.show()
-
         anomaly_buffer = BytesIO()
         anomaly_fig.savefig(anomaly_buffer, format="png")
         anomaly_buffer.seek(0)
         encoded_anomaly_img = base64.b64encode(anomaly_buffer.read()).decode("utf-8")
-        plt.close(anomaly_fig)
 
         logger.info("EDA завершено успешно")
 
