@@ -6,6 +6,8 @@ import numpy as np
 import cv2
 import shutil
 import logging
+import matplotlib.pyplot as plt
+import base64
 from logging.handlers import TimedRotatingFileHandler
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from sklearn.decomposition import PCA
@@ -16,76 +18,64 @@ from sklearn.ensemble import RandomForestClassifier
 from joblib import dump, load
 from pydantic import BaseModel, ValidationError, Field
 from typing import List, Dict, Tuple, Union
-import matplotlib.pyplot as plt
 from collections import Counter
 from io import BytesIO
-import base64
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
+# Создаем экземпляр приложения FastAPI
 app = FastAPI(
     title="Image Classification API",
-    description="API for uploading a dataset, specifying model parameters, and training an image classification model.",
+    description="API для загрузки датасета, указания параметров модели и обучения модели классификации изображений.",
     version="1.0.0"
 )
 
+# Модель данных для передачи информации о модели
 class ModelData(BaseModel):
     model: str = Field(..., description="Название модели, например, 'SVC'.")
     params: Dict = Field(default_factory=dict, description="Параметры для модели.")
     model_id: str = Field(..., description="Уникальный идентификатор для сохранения модели.")
 
+# Модель для представления информации о сохраненной модели
 class Model(BaseModel):
     id: str
 
-# Базовая директория, где будет все храниться
+# Определяем пути к директориям
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
 PARENT_DIR = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 SHARED_DIR = os.path.join(PARENT_DIR, "shared")
 LOGS_DIR = os.path.join(CURRENT_DIR, "logs")
 
-# Создание папок, если они отсутствуют
+# Директории для хранения датасетов, моделей и временных предсказаний
+datasets_dir = os.path.join(SHARED_DIR, "datasets")
+models_dir = os.path.join(SHARED_DIR, "models")
+temp_predict_dir = os.path.join(SHARED_DIR, "temp_predict")
+
+# Создаем необходимые директории, если они еще не существуют
 os.makedirs(SHARED_DIR, exist_ok=True)
 os.makedirs(LOGS_DIR, exist_ok=True)
+os.makedirs(datasets_dir, exist_ok=True)
+os.makedirs(models_dir, exist_ok=True)
+os.makedirs(temp_predict_dir, exist_ok=True)
 
-# Настройка логгера
+# Настраиваем логирование
 logger = logging.getLogger("ml_app")
 if not logger.hasHandlers():
     logger.setLevel(logging.INFO)
     handler = TimedRotatingFileHandler(
         filename=os.path.join(LOGS_DIR, "ml_app.log"),
-        when="midnight",  # Ротация логов каждую ночь
+        when="midnight",
         interval=1,
-        backupCount=7,  # Храним логи за последние 7 дней
+        backupCount=7,
         encoding="utf-8",
     )
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-BASE_DIR = SHARED_DIR
+# Функция для загрузки изображений и меток из указанной директории
+def load_images_and_labels(base_dir: str, category: str, sample_percentage: float = 1.00) -> Tuple[np.ndarray, np.ndarray]:
+    images, labels = [], []
 
-# Переименуем папку dataset в datasets
-datasets_dir = os.path.join(BASE_DIR, "datasets")
-os.makedirs(datasets_dir, exist_ok=True)
-
-# Папка для моделей
-models_dir = os.path.join(BASE_DIR, "models")
-os.makedirs(models_dir, exist_ok=True)
-
-# Папка для временных файлов
-temp_predict_dir = os.path.join(BASE_DIR, "temp_predict")
-os.makedirs(temp_predict_dir, exist_ok=True)
-
-def load_images_and_labels(base_dir: str, category: str, sample_percentage: float = 0.15) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Загрузка изображений и меток из указанной категории, игнорируя промежуточные папки.
-    :param base_dir: Базовая директория, содержащая папки с изображениями.
-    :param category: Категория ("train", "test", "validation").
-    :param sample_percentage: Процент выборки изображений для загрузки.
-    :return: кортеж из массива изображений и соответствующих им меток.
-    """
-    images: List[np.ndarray] = []
-    labels: List[str] = []
-
-    # Ищем папку категории на любом уровне вложенности
     for root, _, _ in os.walk(base_dir):
         if os.path.basename(root) == category:
             for class_name in os.listdir(root):
@@ -102,19 +92,15 @@ def load_images_and_labels(base_dir: str, category: str, sample_percentage: floa
                         img = cv2.resize(img, (64, 64))
                         images.append(img.flatten())
                         labels.append(class_name)
-            break  # Останавливаем поиск, если нужная папка найдена
+            break
 
     if not images or not labels:
         raise ValueError(f"Категория {category} пуста или содержит некорректные данные.")
 
     return np.array(images), np.array(labels)
 
+# Функция для создания экземпляра модели на основе переданных данных от клиента
 def get_model_from_client(model_data: Dict) -> Union[SVC, LogisticRegression, RandomForestClassifier]:
-    """
-    Создание классификатора на основе данных, полученных от клиента.
-    :param model_data: Словарь с именем модели и её параметрами.
-    :return: Объект классификатора.
-    """
     model_name = model_data.get("model")
     if not model_name:
         raise ValueError("Модель не указана.")
@@ -127,82 +113,185 @@ def get_model_from_client(model_data: Dict) -> Union[SVC, LogisticRegression, Ra
     elif model_name == "RandomForestClassifier":
         return RandomForestClassifier(**params)
     else:
-        raise ValueError(f"Unsupported model: {model_name}")
+        raise ValueError(f"Неизвестная модель: {model_name}")
+
+# Функция для анализа аномалий по классам
+def analyze_anomalies_by_class(images: np.ndarray, labels: np.ndarray) -> plt.Figure:
+    unique_classes = np.unique(labels)
+    mean_brightness_by_class = {}
+    std_brightness_by_class = {}
+
+    for cls in unique_classes:
+        class_images = images[labels == cls]
+        mean_brightness_by_class[cls] = np.mean(class_images, axis=1)
+        std_brightness_by_class[cls] = np.std(class_images, axis=1)
+
+    num_classes = len(unique_classes)
+    fig_height = max(5, num_classes)
+    fig, axes = plt.subplots(2, 1, figsize=(12, fig_height))
+
+    axes[0].boxplot(
+        [mean_brightness_by_class[cls] for cls in unique_classes],
+        labels=unique_classes,
+        patch_artist=True
+    )
+    axes[0].set_title("Средняя яркость по классам")
+    axes[0].set_xlabel("Класс")
+    axes[0].set_ylabel("Средняя яркость")
+    axes[0].tick_params(axis='x', rotation=45)
+
+    axes[1].boxplot(
+        [std_brightness_by_class[cls] for cls in unique_classes],
+        labels=unique_classes,
+        patch_artist=True
+    )
+    axes[1].set_title("Стандартное отклонение яркости по классам")
+    axes[1].set_xlabel("Класс")
+    axes[1].set_ylabel("Стандартное отклонение яркости")
+    axes[1].tick_params(axis='x', rotation=45)
+
+    # Разносим графики, чтобы надписи не накладывались
+    plt.subplots_adjust(hspace=5.0)
+
+    plt.tight_layout()
+    return fig
+
+@app.post("/eda")
+async def eda(
+        file: UploadFile = File(...),
+) -> Dict:
+    """
+    Маршрут для выполнения Exploratory Data Analysis (EDA) над загруженным датасетом.
+
+    :param file: Загруженный файл архива с данными.
+    :return: Словарь с результатами анализа, включая распределение классов и график аномалий.
+    """
+    try:
+        logger.info("Начали выполнение EDA")
+
+        if os.listdir(datasets_dir):
+            shutil.rmtree(datasets_dir)
+            os.makedirs(datasets_dir, exist_ok=True)
+
+        zip_path = os.path.join(SHARED_DIR, file.filename)
+        with open(zip_path, "wb") as buffer:
+            buffer.write(await file.read())
+
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(datasets_dir)
+
+        train_images, train_labels = load_images_and_labels(datasets_dir, "train", sample_percentage=1.00)
+        test_images, test_labels = load_images_and_labels(datasets_dir, "test", sample_percentage=1.00)
+
+        train_counter = Counter(train_labels)
+        test_counter = Counter(test_labels)
+
+        # Функция для анализа аномалий в изображениях
+        anomaly_fig = analyze_anomalies_by_class(train_images, train_labels)
+
+        anomaly_buffer = BytesIO()
+        anomaly_fig.savefig(anomaly_buffer, format="png")
+        anomaly_buffer.seek(0)
+        encoded_anomaly_img = base64.b64encode(anomaly_buffer.read()).decode("utf-8")
+
+        logger.info("EDA завершено успешно")
+
+        # Сохраняем результаты для дальнейшего использования в обучении
+        np.save(os.path.join(datasets_dir, "train_images.npy"), train_images)
+        np.save(os.path.join(datasets_dir, "train_labels.npy"), train_labels)
+        np.save(os.path.join(datasets_dir, "test_images.npy"), test_images)
+        np.save(os.path.join(datasets_dir, "test_labels.npy"), test_labels)
+
+        return {
+            "message": "EDA выполнен успешно!",
+            "train_class_dist": dict(train_counter),
+            "test_class_dist": dict(test_counter),
+            "anomaly_image": f"data:image/png;base64,{encoded_anomaly_img}"
+        }
+
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении EDA: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/fit")
 async def fit(
-        file: UploadFile = File(...),
         model_data: str = Form(...),
 ) -> Dict:
     """
-    Эндпоинт для тренировки модели на загруженном наборе данных.
-    :param file: Архив с данными для тренировки.
-    :param model_data: JSON с описанием модели и её параметров.
-    :return: Словарь с результатами тренировки.
+    Маршрут для обучения модели на основании загруженных данных.
+
+    :param model_data: JSON строка, содержащая информацию о модели, её параметрах и уникальном идентификаторе.
+    :return: Словарь с информацией об обученной модели, включая точность и отчёт о классификации.
     """
     try:
-        # Проверка входных данных
-        if not file.filename.endswith(".zip"):
-            raise HTTPException(status_code=400, detail="Файл должен быть в формате .zip")
+        # Проверяем наличие результатов EDA
+        train_images_path = os.path.join(datasets_dir, "train_images.npy")
+        train_labels_path = os.path.join(datasets_dir, "train_labels.npy")
+        test_images_path = os.path.join(datasets_dir, "test_images.npy")
+        test_labels_path = os.path.join(datasets_dir, "test_labels.npy")
 
-        # Валидация JSON данных модели
+        if not all(os.path.exists(path) for path in [train_images_path, train_labels_path, test_images_path, test_labels_path]):
+            raise HTTPException(status_code=400, detail="Данные не подготовлены. Выполните шаг EDA перед обучением.")
+
+        # Загружаем данные
+        train_images = np.load(train_images_path)
+        train_labels = np.load(train_labels_path)
+        test_images = np.load(test_images_path)
+        test_labels = np.load(test_labels_path)
+
         try:
+            # Парсим JSON строку и валидируем данные
             model_data = json.loads(model_data)
             validated_model_data = ModelData(**model_data)
         except (json.JSONDecodeError, ValidationError) as e:
             raise HTTPException(status_code=400, detail=f"Ошибка валидации JSON: {e}")
 
-        # 1. Распаковываем архив в общую папку
-        dataset_dir = datasets_dir
-        zip_path = os.path.join(BASE_DIR, file.filename)
-        with open(zip_path, "wb") as buffer:
-            buffer.write(await file.read())
-
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(dataset_dir)
-
-        # 2. Загружаем данные
-        train_images, train_labels = load_images_and_labels(dataset_dir, "train", sample_percentage=0.15)
-        test_images, test_labels = load_images_and_labels(dataset_dir, "test", sample_percentage=0.15)
-
-        # 3. Применяем PCA
+        # Используем PCA для уменьшения размерности данных
         pca = PCA(n_components=150, svd_solver='randomized', whiten=True, random_state=42)
-        reduced_train_images = pca.fit_transform(train_images)
-        reduced_test_images = pca.transform(test_images)
 
-        # 4. Создаем модель на основе данных клиента
-        try:
+        # Функция обучения модели
+        def train_model():
+            # Применяем PCA к данным
+            reduced_train_images = pca.fit_transform(train_images)
+            reduced_test_images = pca.transform(test_images)
+
+            # Создаём классификатор на основе переданной модели и её параметров
             classifier = get_model_from_client(validated_model_data.dict())
-        except Exception:
-            raise HTTPException(status_code=400, detail="Некорректный формат модели.")
+            logger.info("Начали обучение модели")
+            classifier.fit(reduced_train_images, train_labels)
 
-        logger.info(f"Начали обучение")
+            # Прогнозируем результаты на тестовых данных
+            y_pred = classifier.predict(reduced_test_images)
+            accuracy = accuracy_score(test_labels, y_pred)
 
-        # 5. Обучаем модель
-        classifier.fit(reduced_train_images, train_labels)
+            # Составляем отчет о классификации
+            report = classification_report(test_labels, y_pred, output_dict=True)
 
-        # 6. Предсказываем и оцениваем
-        y_pred = classifier.predict(reduced_test_images)
-        accuracy = accuracy_score(test_labels, y_pred)
+            # Сохраняем модель и PCA вместе
+            model_id = validated_model_data.model_id
+            model_path = os.path.join(models_dir, f"{model_id}.joblib")
+            dump((classifier, pca), model_path)
 
-        # 7. Создаем отчет об обучении
-        report = classification_report(test_labels, y_pred, output_dict=True)
-
-        # 8. Сохраняем модель
-        model_id = validated_model_data.model_id
-        model_path = os.path.join(models_dir, f"{model_id}.joblib")
-        dump((classifier, pca), model_path)
-
-        # Логируем успешное обучение
-        logger.info(f"Модель {model_id} успешно обучена с точностью {accuracy}.")
-
-        return {
-            "id": model_id,
-            "accuracy": accuracy,
-            "report": report
+            logger.info(f"Модель {model_id} успешно обучена с точностью {accuracy}.")
+            return {
+                "id": model_id,
+                "accuracy": accuracy,
+                "report": report
             }
+
+        # Обучаем модель асинхронно с таймаутом 1 минута
+        with ThreadPoolExecutor() as executor:
+            future = executor.submit(train_model)
+            try:
+                result = future.result(timeout=60)
+            except TimeoutError:
+                logger.error("Обучение модели заняло больше 1 минуты и было прервано.")
+                raise HTTPException(status_code=500, detail="Процесс обучения занял больше 1 минуты и был прерван.")
+
+        return result
+
     except Exception as e:
-        logger.info(f"Ошибка при обучении модели: {e}")
+        logger.error(f"Ошибка при обучении модели: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/predict")
@@ -211,7 +300,8 @@ async def predict(
         model_id: str = Form(...)
 ) -> Dict[str, Union[str, float]]:
     """
-    Эндпоинт для предсказания класса изображения с использованием сохраненной модели.
+    Маршрут для предсказания класса изображения с использованием сохраненной модели.
+
     :param file: Изображение для классификации.
     :param model_id: Идентификатор модели.
     :return: Предсказанный класс изображения.
@@ -276,6 +366,11 @@ async def predict(
 
 @app.get("/list_models", response_model=List[Model])
 async def list_models() -> List[Model]:
+    """
+    Маршрут для получения списка всех сохраненных моделей.
+
+    :return: Список объектов Model, представляющих каждую сохранённую модель.
+    """
     logger.info(f"Получение моделей...")
     models_path = os.path.join(SHARED_DIR, "models")  # Путь к папке моделей
     if not os.path.exists(models_path):
@@ -287,82 +382,41 @@ async def list_models() -> List[Model]:
 
 @app.delete("/remove_all", response_model=List[Model])
 async def remove_all() -> List[Model]:
-    logger.info(f"Удаление моделей...")
-    models_path = os.path.join(SHARED_DIR)
-    model_files = [f for f in os.listdir(f'{models_path}/models') if f.endswith(".joblib")]
+    """
+    Маршрут для удаления всех моделей, данных и временных файлов.
+
+    :return: Список удалённых моделей.
+    """
+    logger.info("Удаление моделей и данных...")
+    model_files = [f for f in os.listdir(models_dir) if f.endswith(".joblib")]
     models = [Model(id=os.path.splitext(file)[0]) for file in model_files]
-    if not os.path.exists(models_path):
-        logger.info("Папка пуста")
-        return []
-    shutil.rmtree(models_path)
-    os.mkdir(models_path)
-    logger.info("Все данные и модели удалены.")
-    return models
 
-@app.post("/eda")
-async def eda(
-        file: UploadFile = File(...),
-) -> Dict:
-    """
-    Анализ Exploratory Data Analysis (EDA) на основе загруженного архива изображений.
-    """
     try:
-        logger.info("Начали получение EDA")
-        # 1. Сохраняем zip-файл и распаковываем
-        zip_path = os.path.join(BASE_DIR, file.filename)
-        with open(zip_path, "wb") as buffer:
-            buffer.write(await file.read())
 
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(datasets_dir)
+        # Очистка данных
+        shutil.rmtree(models_dir)
+        shutil.rmtree(temp_predict_dir)
+        shutil.rmtree(datasets_dir)
+        for item in os.listdir(SHARED_DIR):
+            item_path = os.path.join(SHARED_DIR, item)
+            if os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+            else:
+                os.remove(item_path)
 
-        # 2. Загружаем изображения из train и test
-        train_images, train_labels = load_images_and_labels(datasets_dir, "train", sample_percentage=1.0)
-        test_images, test_labels = load_images_and_labels(datasets_dir, "test", sample_percentage=1.0)
+        #Заново создаем директории
+        os.makedirs(models_dir, exist_ok=True)
+        os.makedirs(temp_predict_dir, exist_ok=True)
+        os.makedirs(datasets_dir, exist_ok=True)
 
-        # 3. Анализ распределения классов
-        train_counter = Counter(train_labels)
-        test_counter = Counter(test_labels)
-
-        fig, ax = plt.subplots(1, 2, figsize=(12, 5))
-        ax[0].bar(train_counter.keys(), train_counter.values(), color='skyblue')
-        ax[0].set_title("Train Class Distribution")
-        ax[0].set_xticks(list(range(len(train_counter.keys()))))
-        ax[0].set_xticklabels(train_counter.keys(), rotation=45)
-
-        ax[1].bar(test_counter.keys(), test_counter.values(), color='salmon')
-        ax[1].set_title("Test Class Distribution")
-        ax[1].set_xticks(list(range(len(test_counter.keys()))))
-        ax[1].set_xticklabels(test_counter.keys(), rotation=45)
-
-        plt.tight_layout()
-
-        # 4. Пример изображений (первые 5)
-        fig2, axs = plt.subplots(1, 5, figsize=(15, 5))
-        for i in range(5):
-            axs[i].imshow(train_images[i].reshape(64, 64), cmap='gray')
-            axs[i].set_title(train_labels[i])
-            axs[i].axis('off')
-        plt.suptitle("Sample Images", fontsize=16)
-
-        # 5. Преобразуем графики в base64 для отправки
-        buffer = BytesIO()
-        plt.savefig(buffer, format="png")
-        buffer.seek(0)
-        encoded_img = base64.b64encode(buffer.read()).decode("utf-8")
-        plt.close()
-        logger.info("Получение EDA закончено")
-        return {
-            "message": "EDA выполнен успешно!",
-            "train_class_dist": dict(train_counter),
-            "test_class_dist": dict(test_counter),
-            "image": f"data:image/png;base64,{encoded_img}"
-        }
-
+        logger.info("Все модели, данные и временные файлы удалены.")
     except Exception as e:
-        logger.error(f"Ошибка при EDA: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Ошибка при удалении: {e}")
+        raise HTTPException(status_code=500, detail="Не удалось очистить директории.")
+
+    return models
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
