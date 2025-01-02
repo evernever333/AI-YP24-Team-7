@@ -46,10 +46,10 @@
 
 2. **Обучение модели:**  
    - Выберите метод классификации (SVC, Logistic Regression, Random Forest).  
-   - Загрузите тренировочный датасет.
+   - Загрузите тренировочный датасет. Запустите процесс обучения. 
    
    ![03](https://github.com/user-attachments/assets/a0de324c-d188-4fe3-8ec2-8c78b07327a0)
-   - Запустите процесс обучения. После завершения получите метрики модели (precision, recall, F1-score).
+   - После завершения получите метрики модели (precision, recall, F1-score).
    
    ![04](https://github.com/user-attachments/assets/6a570d0a-d164-4505-95ab-c68aaf9c469f)
 
