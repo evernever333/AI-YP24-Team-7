@@ -15,3 +15,8 @@
 Чекпоинт 1 ✅
 
 Чекпионт 2 ✅
+
+Чекпионт 3 ✅
+
+
+![ezgif com-optimize](https://github.com/user-attachments/assets/c09d5515-4ad3-4a4b-bad7-a0073ecd5907)
