@@ -1,0 +1,36 @@
+services:
+  streamlit:
+    build: streamlit
+    ports:
+      - 8501:8501
+    depends_on:
+      - fastapi
+    volumes:
+      - ./Streamlit:/app
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+        reservations:
+          memory: 2g
+    environment:
+      - STREAMLIT_SERVER_MAX_UPLOAD_SIZE=2048
+    restart: always
+    networks:
+      - app
+    container_name: Streamlit
+
+  fastapi:
+    build: fastapi
+    ports:
+      - 8000:8000
+    volumes:
+      - ./FastAPI:/app
+    restart: always
+    networks:
+      - app
+    container_name: FastAPI
+
+networks:
+  app:
+    driver: bridge
