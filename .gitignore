@@ -1,0 +1,17 @@
+# Виртуальное окружение
+venv/
+
+# Кэш и мусор Python
+__pycache__/
+*.py[cod]
+
+# IDE
+.idea/
+.vscode/
+
+# Streamlit и FastAPI логи
+FastAPI/logs/
+Streamlit/logs/
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
