@@ -4,6 +4,7 @@ venv/
 # Кэш и мусор Python
 __pycache__/
 *.py[cod]
+*.log
 
 # IDE
 .idea/
