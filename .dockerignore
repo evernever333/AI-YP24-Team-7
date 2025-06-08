@@ -1,0 +1,30 @@
+# Игнорируем виртуальное окружение
+.venv/
+venv/
+
+# Кэш Python
+__pycache__/
+*.py[cod]
+
+# Логи и временные файлы
+*.log
+*.tmp
+
+# IDE и редакторы
+.idea/
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Игнорируем всё в shared кроме нужного
+shared/archive.zip
+shared/**/*.npy
+shared/**/*.jpg
+shared/**/*.jpeg
+shared/**/*.png
+shared/models/*.joblib
+
+# Игнорируем всё, что не нужно копировать в контейнер
+FastAPI/logs/
+Streamlit/logs/
