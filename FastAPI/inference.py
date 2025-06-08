@@ -5,7 +5,6 @@ from pathlib import Path
 from io import BytesIO
 from fastapi import APIRouter, UploadFile, HTTPException, Form
 from PIL import Image
-from torchvision import transforms
 from logging.handlers import TimedRotatingFileHandler
 from FastAPI.models import PredictResponse
 from FastAPI.model_loader import (
@@ -13,6 +12,25 @@ from FastAPI.model_loader import (
     load_veg_classifier_model,
     load_vgg16_model
 )
+from FastAPI.utils import (
+    extract_color_features,
+    extract_sift_hog_features,
+    prepare_gray_image,
+    prepare_dl_tensor
+)
+
+# --- Классы ---
+CLASS_NAMES_EN = [
+    "Bottle_Gourd", "Papaya", "Radish", "Cauliflower", "Bitter_Gourd",
+    "Carrot", "Pumpkin", "Cabbage", "Brinjal", "Capsicum", "Tomato",
+    "Cucumber", "Potato", "Broccoli", "Bean"
+]
+
+CLASS_NAMES_RU = [
+    "Бутылочная тыква", "Папайя", "Редис", "Цветная капуста", "Горькая тыква",
+    "Морковь", "Тыква", "Капуста", "Баклажан", "Болгарский перец", "Помидор",
+    "Огурец", "Картофель", "Брокколи", "Фасоль"
+]
 
 # --- Логирование ---
 LOGS_DIR = Path(__file__).resolve().parent / "logs"
@@ -40,18 +58,38 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_DIR = BASE_DIR / "shared" / "models"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# --- DL трансформации ---
-dl_transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-])
+# --- Обработчики по имени модели ---
+def get_model_handlers(model_path: Path):
+    return {
+        "logreg_pca.joblib": lambda img: (
+            lambda clf, pca: clf.predict(pca.transform(prepare_gray_image(img)))
+        )(*load_joblib_model(str(model_path))),
 
+        "rf_sift_hog.joblib": lambda img: load_joblib_model(str(model_path)).predict(
+            extract_sift_hog_features(img)
+        ),
+
+        "lgbm_color.joblib": lambda img: load_joblib_model(str(model_path)).predict(
+            extract_color_features(img)
+        ),
+
+        "veg_cnn_final_224.pt": lambda img: (
+            lambda model: torch.argmax(
+                model(prepare_dl_tensor(img, DEVICE)), dim=1
+            ).item()
+        )(load_veg_classifier_model(str(model_path), num_classes=15)),
+
+        "veg_vgg16_final.pt": lambda img: (
+            lambda model: torch.argmax(
+                model(prepare_dl_tensor(img, DEVICE)), dim=1
+            ).item()
+        )(load_vgg16_model(str(model_path), num_classes=15)),
+    }
 
 @router.post("/predict", response_model=PredictResponse)
 async def predict_route(
-        file: UploadFile,
-        selected_model: str = Form(...)
+    file: UploadFile,
+    selected_model: str = Form(...)
 ):
     if not selected_model:
         raise HTTPException(status_code=400, detail="Model ID is required.")
@@ -63,50 +101,37 @@ async def predict_route(
     if not model_path.exists():
         raise HTTPException(status_code=404, detail="Model not found.")
 
+    handlers = get_model_handlers(model_path)
+    if selected_model not in handlers:
+        raise HTTPException(status_code=400, detail="Unknown model type.")
+
     try:
         logger.info(f"Получен запрос для модели: {selected_model}")
 
-        # === Исправлено: безопасное чтение изображения ===
         image_bytes = await file.read()
         img = Image.open(BytesIO(image_bytes)).convert("RGB")
 
-        if selected_model.endswith(".joblib"):
-            model = load_joblib_model(str(model_path))
-            img_gray = img.convert("L").resize((64, 64))
-            img_array = np.array(img_gray).astype(np.float32) / 255.0
-            img_array = (img_array - 0.5) / 0.5
-            input_vector = img_array.flatten().reshape(1, -1)
-            if isinstance(model, tuple):
-                clf, pca = model
-                input_vector = pca.transform(input_vector)
-                prediction = clf.predict(input_vector)
-            else:
-                prediction = model.predict(input_vector)
+        result = handlers[selected_model](img)
 
-        elif selected_model.endswith("veg_cnn_final_224.pt"):
-            model = load_veg_classifier_model(str(model_path), num_classes=15)
-            model.eval()
-            input_tensor = dl_transform(img).unsqueeze(0).to(DEVICE)
-            with torch.no_grad():
-                output = model(input_tensor)
-                _, pred = torch.max(output, 1)
-                prediction = [pred.item()]
+        # --- Распаковка предсказания, если это список/массив из одного элемента ---
+        if isinstance(result, (list, np.ndarray)) and len(result) == 1:
+            result = result[0]
 
-        elif selected_model.endswith("veg_vgg16_final.pt"):
-            model = load_vgg16_model(str(model_path), num_classes=15)
-            model.eval()
-            input_tensor = dl_transform(img).unsqueeze(0).to(DEVICE)
-            with torch.no_grad():
-                output = model(input_tensor)
-                _, pred = torch.max(output, 1)
-                prediction = [pred.item()]
-
+        # --- Преобразование индекса или строки в понятное название ---
+        if isinstance(result, (np.integer, int)):
+            index = int(result)
+            prediction = f"{CLASS_NAMES_RU[index]} ({CLASS_NAMES_EN[index]})"
+        elif isinstance(result, str):
+            try:
+                index = CLASS_NAMES_EN.index(result)
+                prediction = f"{CLASS_NAMES_RU[index]} ({result})"
+            except ValueError:
+                prediction = result
         else:
-            logger.error(f"Неизвестный тип модели: {selected_model}")
-            raise HTTPException(status_code=400, detail="Unknown model type.")
+            prediction = str(result)
 
-        logger.info(f"Предсказание завершено: {prediction[0]}")
-        return {"prediction": str(prediction[0])}
+        logger.info(f"Предсказание завершено: {prediction}")
+        return {"prediction": prediction}
 
     except Exception as e:
         logger.exception("Ошибка при выполнении предсказания")
