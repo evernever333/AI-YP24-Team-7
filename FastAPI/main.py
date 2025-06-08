@@ -1,7 +1,7 @@
-from fastapi import FastAPI
-from FastAPI.inference import router as inference_router
 import logging
 import os
+from fastapi import FastAPI
+from inference import router as inference_router
 from logging.handlers import TimedRotatingFileHandler
 
 # === Логирование ===
