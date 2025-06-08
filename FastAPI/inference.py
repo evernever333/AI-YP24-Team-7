@@ -20,17 +20,20 @@ from FastAPI.utils import (
 )
 
 # --- Классы ---
-CLASS_NAMES_EN = [
+CLASS_NAMES_EN_ML = [
     "Bottle_Gourd", "Papaya", "Radish", "Cauliflower", "Bitter_Gourd",
     "Carrot", "Pumpkin", "Cabbage", "Brinjal", "Capsicum", "Tomato",
     "Cucumber", "Potato", "Broccoli", "Bean"
 ]
 
-CLASS_NAMES_RU = [
+CLASS_NAMES_RU_ML = [
     "Бутылочная тыква", "Папайя", "Редис", "Цветная капуста", "Горькая тыква",
     "Морковь", "Тыква", "Капуста", "Баклажан", "Болгарский перец", "Помидор",
     "Огурец", "Картофель", "Брокколи", "Фасоль"
 ]
+
+CLASS_NAMES_EN_DL = sorted(CLASS_NAMES_EN_ML)
+CLASS_NAMES_RU_DL = [CLASS_NAMES_RU_ML[CLASS_NAMES_EN_ML.index(name)] for name in CLASS_NAMES_EN_DL]
 
 # --- Логирование ---
 LOGS_DIR = Path(__file__).resolve().parent / "logs"
@@ -120,11 +123,18 @@ async def predict_route(
         # --- Преобразование индекса или строки в понятное название ---
         if isinstance(result, (np.integer, int)):
             index = int(result)
-            prediction = f"{CLASS_NAMES_RU[index]} ({CLASS_NAMES_EN[index]})"
+            if selected_model in ["veg_cnn_final_224.pt", "veg_vgg16_final.pt"]:
+                prediction = f"{CLASS_NAMES_RU_DL[index]} ({CLASS_NAMES_EN_DL[index]})"
+            else:
+                prediction = f"{CLASS_NAMES_RU_ML[index]} ({CLASS_NAMES_EN_ML[index]})"
         elif isinstance(result, str):
             try:
-                index = CLASS_NAMES_EN.index(result)
-                prediction = f"{CLASS_NAMES_RU[index]} ({result})"
+                if selected_model in ["veg_cnn_final_224.pt", "veg_vgg16_final.pt"]:
+                    index = CLASS_NAMES_EN_DL.index(result)
+                    prediction = f"{CLASS_NAMES_RU_DL[index]} ({result})"
+                else:
+                    index = CLASS_NAMES_EN_ML.index(result)
+                    prediction = f"{CLASS_NAMES_RU_ML[index]} ({result})"
             except ValueError:
                 prediction = result
         else:
