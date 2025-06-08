@@ -1,12 +1,10 @@
 import os
 import logging
-from logging.handlers import TimedRotatingFileHandler
 import streamlit as st
 import asyncio
-import json
 import httpx
 import pandas as pd
-import plotly.express as px
+from logging.handlers import TimedRotatingFileHandler
 
 # Папка для логов
 CURRENT_DIR = os.path.abspath(os.path.dirname(__file__))
